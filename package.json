@@ -1,0 +1,21 @@
+﻿{
+  "name": "timeweave",
+  "version": "1.0.0",
+  "description": "TimeWeave - Adaptive Personal Time and Workload Optimizer",
+  "scripts": {
+    "dev": "node start-all.js",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:ml": "python ml_service/main.py",
+    "build": "cd frontend && npm run build && cd ../backend && npm run build",
+    "test": "node test-all.js"
+  },
+  "keywords": [
+    "time-management",
+    "scheduler",
+    "ml",
+    "productivity"
+  ],
+  "author": "TimeWeave Team",
+  "license": "MIT"
+}
