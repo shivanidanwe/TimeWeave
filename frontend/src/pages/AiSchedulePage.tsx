@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   ArrowRight,
@@ -12,7 +12,8 @@ import {
   Layers,
   Zap,
   Coffee,
-  AlertTriangle
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { useTasks } from '../context/TaskContext';
 import { api } from '../api/client';
@@ -21,7 +22,7 @@ import { ScheduleGenerationResult, ScheduleBlock } from '../types';
 export const AiSchedulePage: React.FC = () => {
   const { tasks } = useTasks();
 
-  const [targetDate, setTargetDate] = useState('2026-09-24');
+  const [targetDate, setTargetDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [scheduleResult, setScheduleResult] = useState<ScheduleGenerationResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
@@ -63,26 +64,8 @@ export const AiSchedulePage: React.FC = () => {
     }
   };
 
-  const suggestions = [
-    {
-      id: 0,
-      title: "Move 'Research Paper Reading' from 2:00 PM to 11:00 AM",
-      benefit: "Better energy match (+40% focus)",
-      color: "bg-emerald-50 text-emerald-700 border-emerald-200"
-    },
-    {
-      id: 1,
-      title: "Add 30 min break after 2 hours",
-      benefit: "Improves productivity (+25%)",
-      color: "bg-blue-50 text-blue-700 border-blue-200"
-    },
-    {
-      id: 2,
-      title: "Reschedule 'Gym' to 5:00 PM",
-      benefit: "Lower conflict with other tasks",
-      color: "bg-purple-50 text-purple-700 border-purple-200"
-    }
-  ];
+  const recommendations = scheduleResult?.recommendations || [];
+  const isOvercommitted = scheduleResult?.status === 'Overcommitted' || (scheduleResult?.utilization_percentage || 0) > 100;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -93,12 +76,12 @@ export const AiSchedulePage: React.FC = () => {
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               AI Schedule Recommendations
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-              3 Suggestions
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              {recommendations.length} Optimizations
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Optimized Schedule for Tomorrow • Based on your past data and current workload
+            Optimized Schedule • Generated using Scikit-Learn predictions and constraint solver
           </p>
         </div>
 
@@ -107,7 +90,7 @@ export const AiSchedulePage: React.FC = () => {
             type="date"
             value={targetDate}
             onChange={(e) => setTargetDate(e.target.value)}
-            className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none"
+            className="px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none shadow-xs"
           />
           <button
             onClick={() => generateSchedule(targetDate)}
@@ -120,78 +103,108 @@ export const AiSchedulePage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3 Interactive Recommendations matching Screen 7 */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
-          Smart Optimizations
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {suggestions.map((s) => {
-            const isApplied = appliedSuggestions.includes(s.id);
-            return (
-              <div
-                key={s.id}
-                className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:shadow-md transition"
-              >
-                <div>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 mt-1.5 shrink-0"></span>
-                    <p className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
-                      {s.title}
-                    </p>
-                  </div>
-                  <span className="inline-block mt-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                    {s.benefit}
-                  </span>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end">
-                  <button
-                    onClick={() => handleApplySuggestion(s.id)}
-                    disabled={isApplied}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                      isApplied
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
-                        : 'bg-[#6366F1] hover:bg-[#4F46E5] text-white shadow-xs active:scale-95'
-                    }`}
-                  >
-                    {isApplied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Applied</span>
-                      </>
-                    ) : (
-                      <span>Apply</span>
+      {/* Smart Optimizations Cards */}
+      {recommendations.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+            Smart Optimizations
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {recommendations.map((rec, idx) => {
+              const isApplied = appliedSuggestions.includes(idx);
+              return (
+                <div
+                  key={idx}
+                  className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:shadow-md transition"
+                >
+                  <div>
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 mt-1.5 shrink-0"></span>
+                      <p className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                        {rec.title}
+                      </p>
+                    </div>
+                    {rec.impact && (
+                      <span className="inline-block mt-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                        {rec.impact}
+                      </span>
                     )}
-                  </button>
+                    {rec.description && (
+                      <p className="text-xs text-slate-500 mt-2">{rec.description}</p>
+                    )}
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end">
+                    <button
+                      onClick={() => handleApplySuggestion(idx)}
+                      disabled={isApplied}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                        isApplied
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                          : 'bg-[#6366F1] hover:bg-[#4F46E5] text-white shadow-xs active:scale-95'
+                      }`}
+                    >
+                      {isApplied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Applied</span>
+                        </>
+                      ) : (
+                        <span>Apply</span>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Overcommitment Alert Box matching Screen 7 */}
-      <div className="p-4 bg-rose-50/80 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-            <ShieldAlert className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-rose-900">Overcommitment Alert</h3>
-            <p className="text-xs text-rose-700 mt-0.5">
-              You have 120% workload on Wednesday. Consider moving 2 tasks to other days.
-            </p>
+              );
+            })}
           </div>
         </div>
+      )}
 
-        <button
-          onClick={() => setShowOvercommitmentModal(true)}
-          className="px-4 py-2 bg-white border border-rose-200 hover:bg-rose-100/50 text-rose-700 text-xs font-bold rounded-xl transition self-start sm:self-auto shrink-0"
-        >
-          View Options
-        </button>
-      </div>
+      {/* Dynamic Workload Status Banner */}
+      {isOvercommitted ? (
+        /* Overcommitment Alert Box */
+        <div className="p-5 bg-rose-50/90 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-rose-900">
+                Overcommitment Warning: {scheduleResult?.utilization_percentage}% Workload Planned
+              </h3>
+              <p className="text-xs text-rose-700 mt-0.5">
+                Requested tasks require {scheduleResult?.total_requested_minutes || scheduleResult?.planned_work_minutes}m, which exceeds your working capacity by {scheduleResult?.overload_minutes || 30}m.
+                {scheduleResult?.unscheduled_tasks?.length ? ` ${scheduleResult.unscheduled_tasks.length} task(s) could not be safely placed.` : ''}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowOvercommitmentModal(true)}
+            className="px-4 py-2 bg-white border border-rose-200 hover:bg-rose-100/50 text-rose-700 text-xs font-bold rounded-xl transition self-start sm:self-auto shrink-0 shadow-xs"
+          >
+            View Unscheduled Tasks ({scheduleResult?.unscheduled_tasks?.length || 0})
+          </button>
+        </div>
+      ) : (
+        /* Balanced Workload Banner */
+        <div className="p-4 bg-emerald-50/90 border border-emerald-200 rounded-2xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-emerald-900">
+                Workload Feasible &amp; Balanced ({scheduleResult?.utilization_percentage || 0}% Capacity)
+              </h3>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                All planned tasks fit comfortably within your working day with {scheduleResult?.free_capacity_minutes || 0}m free capacity remaining.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recommended Schedule Preview */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
@@ -201,7 +214,7 @@ export const AiSchedulePage: React.FC = () => {
               Recommended Daily Timeline ({targetDate})
             </h2>
             <p className="text-xs text-slate-500">
-              Planned Work: {scheduleResult?.planned_work_minutes || 0}m • Free Capacity: {scheduleResult?.free_capacity_minutes || 0}m
+              Planned Work: {scheduleResult?.planned_work_minutes || 0}m • Free Capacity: {scheduleResult?.free_capacity_minutes || 0}m • Break Time: {scheduleResult?.break_minutes || 0}m
             </p>
           </div>
 
@@ -209,7 +222,7 @@ export const AiSchedulePage: React.FC = () => {
             {isAccepted ? (
               <span className="flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Schedule Active</span>
+                <span>Schedule Saved &amp; Active</span>
               </span>
             ) : (
               <button
@@ -224,84 +237,80 @@ export const AiSchedulePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Schedule Blocks */}
-        <div className="space-y-2.5">
+        {/* Timeline Blocks */}
+        <div className="space-y-3">
           {scheduleResult?.scheduled_blocks && scheduleResult.scheduled_blocks.length > 0 ? (
-            scheduleResult.scheduled_blocks.map((block, idx) => (
+            scheduleResult.scheduled_blocks.map((b, idx) => (
               <div
-                key={idx}
-                className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 hover:border-indigo-200 hover:shadow-xs transition bg-slate-50/40"
+                key={b.id || idx}
+                className={`p-4 rounded-xl border flex items-center justify-between transition ${
+                  b.block_type === 'break'
+                    ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                    : 'bg-white border-slate-200 hover:border-indigo-200 shadow-xs'
+                }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs font-mono font-bold text-slate-500 w-16 shrink-0">
-                    {block.start_at}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono font-bold text-slate-500 w-24 shrink-0">
+                    {b.start_time_display || b.start_at}
                   </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-800 truncate">
-                      {block.title}
-                    </p>
-                    {block.reason && (
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                        {block.reason}
-                      </p>
-                    )}
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <span>{b.title}</span>
+                      {b.block_type === 'break' && <Coffee className="w-3.5 h-3.5 text-amber-600" />}
+                    </h3>
+                    {b.reason && <p className="text-xs text-slate-500 mt-0.5">{b.reason}</p>}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
-                    {block.duration_minutes}m
-                  </span>
-                  <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-                    {block.category || 'Task'}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+                    {b.duration_minutes}m
                   </span>
                 </div>
               </div>
             ))
           ) : (
-            <div className="py-8 text-center text-slate-400 text-xs">
-              Click Regenerate to propose a new schedule.
+            <div className="py-12 text-center text-slate-400 text-xs">
+              No tasks to schedule. Create pending tasks to generate an optimized daily timetable.
             </div>
           )}
         </div>
       </div>
 
-      {/* Overcommitment Options Modal */}
+      {/* Overcommitment Modal */}
       {showOvercommitmentModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              <span>Overcommitment Resolution</span>
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Wednesday has 6.5 hours of planned work against a 5-hour available window.
-              Recommended actions:
-            </p>
-            <div className="space-y-2 text-xs">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 text-rose-700">
+                <ShieldAlert className="w-5 h-5" />
+                <span>Unscheduled Tasks Due to Capacity Limits</span>
+              </h3>
               <button
-                onClick={() => {
-                  alert('Moved "Grocery Shopping" to Thursday.');
-                  setShowOvercommitmentModal(false);
-                }}
-                className="w-full text-left p-3 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition font-medium"
+                onClick={() => setShowOvercommitmentModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-sm"
               >
-                1. Move 1 low-priority task (Grocery Shopping) to Thursday
-              </button>
-              <button
-                onClick={() => {
-                  alert('Compressed research session to 45m.');
-                  setShowOvercommitmentModal(false);
-                }}
-                className="w-full text-left p-3 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition font-medium"
-              >
-                2. Compress Research Paper reading from 90m to 45m
+                ✕
               </button>
             </div>
+
+            <div className="space-y-2.5 max-h-72 overflow-y-auto">
+              {scheduleResult?.unscheduled_tasks && scheduleResult.unscheduled_tasks.length > 0 ? (
+                scheduleResult.unscheduled_tasks.map((u, i) => (
+                  <div key={i} className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-1">
+                    <p className="text-xs font-bold text-rose-900">{u.title}</p>
+                    <p className="text-[11px] text-rose-700">{u.unscheduled_reason || 'Working day capacity exceeded'}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-500">All tasks were successfully placed.</p>
+              )}
+            </div>
+
             <div className="pt-2 flex justify-end">
               <button
                 onClick={() => setShowOvercommitmentModal(false)}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+                className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900"
               >
                 Close
               </button>

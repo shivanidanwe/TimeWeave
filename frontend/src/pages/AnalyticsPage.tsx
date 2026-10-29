@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   TrendingUp,
   Clock,
@@ -6,7 +7,8 @@ import {
   Sparkles,
   Zap,
   Calendar,
-  Award
+  Award,
+  ArrowRight
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -32,33 +34,19 @@ export const AnalyticsPage: React.FC = () => {
     setIsLoading(true);
     api.getWorkloadAnalytics()
       .then(res => setData(res))
-      .catch(err => console.error(err))
+      .catch(err => console.error('Failed to load analytics:', err))
       .finally(() => setIsLoading(false));
   }, [timeRange]);
 
-  const defaultDistribution = [
-    { name: 'Study', value: 16, color: '#6366F1' },
-    { name: 'Work', value: 14, color: '#06B6D4' },
-    { name: 'Personal', value: 5, color: '#A855F7' },
-    { name: 'Health', value: 4, color: '#10B981' },
-    { name: 'Other', value: 3, color: '#F59E0B' }
-  ];
-
-  const defaultTrend = [
-    { date: '1 Sep', completionRate: 65 },
-    { date: '8 Sep', completionRate: 72 },
-    { date: '15 Sep', completionRate: 85 },
-    { date: '21 Sep', completionRate: 79 },
-    { date: '28 Sep', completionRate: 92 }
-  ];
+  const hasData = Boolean(data?.has_data && (data?.time_distribution?.length || data?.completion_trend?.length));
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Page Header (Screen 8) */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Analytics & Insights
+            Analytics &amp; Insights
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Data-driven patterns, estimation accuracy, and productivity velocity
@@ -77,12 +65,12 @@ export const AnalyticsPage: React.FC = () => {
         </select>
       </div>
 
-      {/* Top 4 KPI Cards (Screen 8) */}
+      {/* Top 4 KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1 */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
           <span className="text-2xl sm:text-3xl font-extrabold text-emerald-600 block leading-none">
-            {data?.productivity_percentage || 78}%
+            {data?.productivity_percentage ?? 0}%
           </span>
           <span className="text-xs font-semibold text-slate-500 mt-1 block">
             Productivity
@@ -92,7 +80,7 @@ export const AnalyticsPage: React.FC = () => {
         {/* KPI 2 */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
           <span className="text-2xl sm:text-3xl font-extrabold text-blue-600 block leading-none">
-            {data?.total_focus_hours || 42}h
+            {data?.total_focus_hours ?? 0}h
           </span>
           <span className="text-xs font-semibold text-slate-500 mt-1 block">
             Total Focus Time
@@ -102,7 +90,7 @@ export const AnalyticsPage: React.FC = () => {
         {/* KPI 3 */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
           <span className="text-2xl sm:text-3xl font-extrabold text-emerald-600 block leading-none">
-            {data?.task_completion_rate || 85}%
+            {data?.task_completion_rate ?? 0}%
           </span>
           <span className="text-xs font-semibold text-slate-500 mt-1 block">
             Task Completion
@@ -112,7 +100,7 @@ export const AnalyticsPage: React.FC = () => {
         {/* KPI 4 */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
           <span className="text-2xl sm:text-3xl font-extrabold text-[#6366F1] block leading-none">
-            {data?.time_saved_hours || 25}h
+            {data?.time_saved_hours ?? 0}h
           </span>
           <span className="text-xs font-semibold text-slate-500 mt-1 block">
             Time Saved (est.)
@@ -120,129 +108,153 @@ export const AnalyticsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Two Chart Panels (Screen 8) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Panel: Task Completion Trend */}
-        <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col">
-          <h2 className="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">
-            Task Completion Trend
-          </h2>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={data?.completion_trend || defaultTrend}
-                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} domain={[50, 100]} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#FFFFFF',
-                    borderRadius: '12px',
-                    border: '1px solid #E2E8F0',
-                    fontSize: '12px'
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="completionRate"
-                  name="Completion %"
-                  stroke="#6366F1"
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: '#6366F1' }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      {hasData ? (
+        <>
+          {/* Two Chart Panels (Screen 8) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Panel: Task Completion Trend */}
+            <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col">
+              <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+                <h2 className="text-base font-bold text-slate-900">Task Completion Velocity</h2>
+                <span className="text-xs font-semibold text-slate-500">Completed items over time</span>
+              </div>
+              <div className="h-64 w-full">
+                {data?.completion_trend && data.completion_trend.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={data.completion_trend}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: '12px',
+                          border: '1px solid #E2E8F0',
+                          fontSize: '12px'
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="tasksCompleted"
+                        name="Tasks Completed"
+                        stroke="#6366F1"
+                        strokeWidth={3}
+                        dot={{ r: 4, fill: '#6366F1' }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                    No task completions recorded in this range.
+                  </div>
+                )}
+              </div>
+            </div>
 
-        {/* Right Panel: Time Distribution Donut Chart */}
-        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col">
-          <h2 className="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">
-            Time Distribution
-          </h2>
-          <div className="h-64 w-full relative flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={data?.time_distribution || defaultDistribution}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={65}
-                  outerRadius={90}
-                  paddingAngle={4}
-                >
-                  {(data?.time_distribution || defaultDistribution).map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            {/* Right Panel: Time Distribution Donut Chart */}
+            <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col">
+              <h2 className="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">
+                Time Distribution
+              </h2>
+              <div className="h-64 w-full flex items-center justify-center">
+                {data?.time_distribution && data.time_distribution.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={data.time_distribution}
+                        innerRadius={55}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {data.time_distribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color || '#6366F1'} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: '12px',
+                          border: '1px solid #E2E8F0',
+                          fontSize: '12px'
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-xs text-slate-400">No category hours logged yet.</div>
+                )}
+              </div>
 
-            {/* Centered Total Label matching Screen 8 */}
-            <div className="absolute text-center pointer-events-none">
-              <span className="text-xl font-extrabold text-slate-900 block leading-none">
-                {data?.total_focus_hours || 42}h
-              </span>
-              <span className="text-[11px] text-slate-400 font-semibold">Total</span>
+              {/* Legend matching Screen 8 */}
+              <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-600">
+                {data?.time_distribution?.map((item) => (
+                  <div key={item.name} className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                    <span className="truncate">{item.name}</span>
+                    <span className="ml-auto font-bold text-slate-800">{item.hours}h</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Category Mini Legend */}
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2 text-xs font-semibold text-slate-600">
-            {(data?.time_distribution || defaultDistribution).map((d) => (
-              <div key={d.name} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }}></span>
-                <span>{d.name}</span>
-              </div>
-            ))}
+          {/* 3 Data-Driven Cognitive Insights */}
+          <div className="space-y-3">
+            <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+              Productivity Insights
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {data?.insights && data.insights.length > 0 ? (
+                data.insights.map((insight) => (
+                  <div
+                    key={insight.id}
+                    className="p-5 bg-white border border-slate-200/80 rounded-2xl shadow-xs hover:shadow-md transition space-y-2 text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#6366F1] bg-indigo-50 px-2.5 py-0.5 rounded-md border border-indigo-100">
+                        {insight.impact}
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-slate-900 text-sm mt-1">{insight.title}</h3>
+                    <p className="text-xs text-slate-500 leading-relaxed">{insight.description}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-3 p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500">
+                  Insights will appear here once you complete multiple tasks across different categories.
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Honest Empty State for New Users */
+        <div className="bg-white p-12 rounded-3xl border border-slate-200/80 text-center space-y-4 shadow-sm">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-[#6366F1] flex items-center justify-center mx-auto">
+            <Sparkles className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Complete a few tasks to unlock your personalized insights.
+          </h2>
+          <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+            TimeWeave tracks your actual focus minutes and completed task durations to generate genuine velocity charts and duration regression curves.
+          </p>
+          <div className="pt-2">
+            <Link
+              to="/tasks"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-500/20 transition active:scale-95"
+            >
+              <span>View Tasks</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
-      </div>
-
-      {/* Bottom 3 Insight Cards (Screen 8) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Insight 1
-          </span>
-          <p className="text-sm font-bold text-slate-800 leading-snug">
-            Your most productive time: 9 AM - 12 PM
-          </p>
-          <span className="inline-block mt-2 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
-            +40% Focus efficiency
-          </span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Insight 2
-          </span>
-          <p className="text-sm font-bold text-slate-800 leading-snug">
-            You complete tasks 32% faster than your initial estimate
-          </p>
-          <span className="inline-block mt-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-            Calibrated with ML
-          </span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Insight 3
-          </span>
-          <p className="text-sm font-bold text-slate-800 leading-snug">
-            You work best on Tuesday & Thursday
-          </p>
-          <span className="inline-block mt-2 text-[11px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
-            Optimal cognitive flow
-          </span>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

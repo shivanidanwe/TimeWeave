@@ -1,4 +1,4 @@
-﻿import { Response } from 'express';
+import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
 import { AuthenticatedRequest } from '../middleware/auth';
@@ -12,7 +12,7 @@ export const getNotifications = async (req: AuthenticatedRequest, res: Response)
     const params: any[] = [userId];
 
     if (filter === 'unread') {
-      sql += ' AND is_read = 0';
+      sql += ' AND is_read = FALSE';
     } else if (filter === 'system') {
       sql += " AND type = 'system'";
     }
@@ -21,7 +21,7 @@ export const getNotifications = async (req: AuthenticatedRequest, res: Response)
 
     const resDb = await db.query(sql, params);
     const unreadCountRes = await db.query(
-      'SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND is_read = 0',
+      'SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND is_read = FALSE',
       [userId]
     );
 
@@ -41,12 +41,12 @@ export const markAsRead = async (req: AuthenticatedRequest, res: Response): Prom
 
     if (id === 'all') {
       await db.query(
-        'UPDATE notifications SET is_read = 1, read_at = CURRENT_TIMESTAMP WHERE user_id = $1',
+        'UPDATE notifications SET is_read = TRUE, read_at = CURRENT_TIMESTAMP WHERE user_id = $1',
         [userId]
       );
     } else {
       await db.query(
-        'UPDATE notifications SET is_read = 1, read_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2',
+        'UPDATE notifications SET is_read = TRUE, read_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2',
         [id, userId]
       );
     }

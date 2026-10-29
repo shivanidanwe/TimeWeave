@@ -1,4 +1,4 @@
-﻿import datetime
+import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
 def parse_time_to_minutes(time_str: str) -> int:
@@ -242,16 +242,23 @@ class ConstraintScheduler:
         scheduled_blocks.sort(key=lambda b: parse_time_to_minutes(b["start_at"]))
 
         # Calculate workload and capacity statistics
-        task_minutes = sum(b["duration_minutes"] for b in scheduled_blocks if b.get("block_type") == "task")
+        scheduled_task_minutes = sum(b["duration_minutes"] for b in scheduled_blocks if b.get("block_type") == "task")
         break_minutes = sum(b["duration_minutes"] for b in scheduled_blocks if b.get("block_type") == "break")
         fixed_minutes = sum(b["duration_minutes"] for b in scheduled_blocks if b.get("is_fixed") and b.get("block_type") != "break")
 
-        free_capacity_minutes = max(0, total_day_minutes - (task_minutes + break_minutes + fixed_minutes))
-        utilization = round((task_minutes / max(1, total_day_minutes - break_minutes - fixed_minutes)) * 100, 1)
+        # Total requested work includes both placed and unscheduled tasks
+        total_requested_task_minutes = sum(
+            t.get("current_predicted_minutes") or t.get("user_estimated_minutes") or 60
+            for t in actionable_tasks
+        )
 
-        if utilization > 100:
+        available_capacity = max(1, total_day_minutes - break_minutes - fixed_minutes)
+        free_capacity_minutes = max(0, total_day_minutes - (scheduled_task_minutes + break_minutes + fixed_minutes))
+        utilization = round((total_requested_task_minutes / available_capacity) * 100, 1)
+
+        if utilization > 100 or len(unscheduled_tasks) > 0:
             status = "Overcommitted"
-            overload_mins = task_minutes - (total_day_minutes - break_minutes - fixed_minutes)
+            overload_mins = max(0, total_requested_task_minutes - available_capacity)
         elif utilization >= 80:
             status = "Near Capacity"
             overload_mins = 0
@@ -298,9 +305,10 @@ class ConstraintScheduler:
         return {
             "target_date": target_date,
             "status": status,
-            "utilization_percentage": min(utilization, 150),
+            "utilization_percentage": min(utilization, 200),
             "total_day_minutes": total_day_minutes,
-            "planned_work_minutes": task_minutes,
+            "planned_work_minutes": scheduled_task_minutes,
+            "total_requested_minutes": total_requested_task_minutes,
             "break_minutes": break_minutes,
             "free_capacity_minutes": free_capacity_minutes,
             "overload_minutes": max(0, overload_mins),

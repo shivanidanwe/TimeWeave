@@ -1,4 +1,4 @@
-﻿import { Response } from 'express';
+import { Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
@@ -221,4 +221,9 @@ export const deleteAccount = async (req: AuthenticatedRequest, res: Response): P
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+};
+
+export const logout = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  // Session/token invalidation acknowledged
+  res.json({ message: 'Logged out successfully.' });
 };

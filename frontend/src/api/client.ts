@@ -1,4 +1,4 @@
-﻿const API_BASE_URL = '/api';
+const API_BASE_URL = '/api';
 
 class ApiClient {
   private getToken(): string | null {
@@ -127,6 +127,19 @@ class ApiClient {
       method: 'PATCH',
       body: JSON.stringify(body)
     });
+  }
+
+  // Focus
+  async getFocusSessions() {
+    return this.request('/focus/sessions');
+  }
+
+  async createFocusSession(body: any) {
+    return this.request('/focus/sessions', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  async updateFocusSession(id: string, body: any) {
+    return this.request(`/focus/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
   }
 
   // Analytics

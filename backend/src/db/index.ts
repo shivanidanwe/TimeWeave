@@ -1,4 +1,4 @@
-﻿import fs from 'fs';
+import fs from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
 import Database from 'better-sqlite3';
@@ -50,7 +50,10 @@ class DatabaseManager {
   }
 
   public async runMigrations() {
-    const migrationFile = path.resolve(__dirname, '../migrations/001_initial_schema.sql');
+    let migrationFile = path.resolve(__dirname, '../migrations/001_initial_schema.sql');
+    if (!fs.existsSync(migrationFile)) {
+      migrationFile = path.resolve(__dirname, '../../src/migrations/001_initial_schema.sql');
+    }
     if (!fs.existsSync(migrationFile)) {
       console.error('[Database] Migration file not found:', migrationFile);
       return;
@@ -89,8 +92,10 @@ class DatabaseManager {
   }
 
   public async query<T = any>(text: string, params: any[] = []): Promise<QueryResult<T>> {
+    const sanitizedParams = params.map(p => (p === undefined ? null : p));
+
     if (this.isPostgres && this.pgPool) {
-      const res = await this.pgPool.query(text, params);
+      const res = await this.pgPool.query(text, sanitizedParams);
       return {
         rows: res.rows,
         rowCount: res.rowCount || 0
@@ -101,7 +106,7 @@ class DatabaseManager {
       const isSelect = /^\s*(SELECT|PRAGMA)/i.test(sqliteSql);
 
       // Normalize parameters (e.g. booleans to 1/0, JSON objects to strings)
-      const normalizedParams = params.map(p => {
+      const normalizedParams = sanitizedParams.map(p => {
         if (typeof p === 'boolean') return p ? 1 : 0;
         if (p !== null && typeof p === 'object' && !(p instanceof Date)) {
           return JSON.stringify(p);

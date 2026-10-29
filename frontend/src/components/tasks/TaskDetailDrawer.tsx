@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   X,
   Clock,
@@ -22,6 +22,7 @@ export const TaskDetailDrawer: React.FC = () => {
     startTimer,
     stopTimer,
     completeTask,
+    updateTask,
     deleteTask,
     recordInterruption,
     activeTimerTaskId,
@@ -32,10 +33,53 @@ export const TaskDetailDrawer: React.FC = () => {
   const [interruptionMinutes, setInterruptionMinutes] = useState(10);
   const [showInterruptionForm, setShowInterruptionForm] = useState(false);
 
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editCategory, setEditCategory] = useState<'Study' | 'Work' | 'Personal' | 'Health' | 'Other'>('Study');
+  const [editPriority, setEditPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('High');
+  const [editEstimatedMins, setEditEstimatedMins] = useState(60);
+  const [editDeadline, setEditDeadline] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (selectedTaskDetail) {
+      setEditTitle(selectedTaskDetail.title);
+      setEditDescription(selectedTaskDetail.description || '');
+      setEditCategory(selectedTaskDetail.category);
+      setEditPriority(selectedTaskDetail.priority);
+      setEditEstimatedMins(selectedTaskDetail.user_estimated_minutes || 60);
+      setEditDeadline(selectedTaskDetail.deadline ? selectedTaskDetail.deadline.split(' ')[0] : '');
+      setIsEditing(false);
+    }
+  }, [selectedTaskDetail?.id]);
+
   if (!selectedTaskDetail) return null;
 
   const t = selectedTaskDetail;
   const isTimerActive = activeTimerTaskId === t.id;
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTitle.trim()) return;
+    setIsSaving(true);
+    try {
+      await updateTask(t.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        category: editCategory,
+        priority: editPriority,
+        user_estimated_minutes: editEstimatedMins,
+        deadline: editDeadline ? `${editDeadline} 23:59:00` : null
+      });
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Failed to update task:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const formatTimer = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -82,25 +126,130 @@ export const TaskDetailDrawer: React.FC = () => {
               {t.priority}
             </span>
           </div>
-          <button
-            onClick={closeTaskDetail}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className="px-2.5 py-1 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition"
+            >
+              <Edit2 className="w-3.5 h-3.5 text-indigo-500" />
+              <span>{isEditing ? 'Cancel' : 'Edit'}</span>
+            </button>
+            <button
+              onClick={closeTaskDetail}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Drawer Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Title & Description */}
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 leading-snug">{t.title}</h1>
-            {t.description && (
-              <p className="mt-2 text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-                {t.description}
-              </p>
-            )}
-          </div>
+          {isEditing ? (
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2">Edit Task Details</h2>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Title</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Description</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Category</label>
+                  <select
+                    value={editCategory}
+                    onChange={(e: any) => setEditCategory(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  >
+                    <option value="Study">Study</option>
+                    <option value="Work">Work</option>
+                    <option value="Personal">Personal</option>
+                    <option value="Health">Health</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Priority</label>
+                  <select
+                    value={editPriority}
+                    onChange={(e: any) => setEditPriority(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Estimated (mins)</label>
+                  <input
+                    type="number"
+                    min="5"
+                    max="600"
+                    value={editEstimatedMins}
+                    onChange={(e) => setEditEstimatedMins(parseInt(e.target.value, 10) || 30)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Deadline Date</label>
+                  <input
+                    type="date"
+                    value={editDeadline}
+                    onChange={(e) => setEditDeadline(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow transition"
+                >
+                  {isSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="px-3 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              {/* Title & Description */}
+              <div>
+                <h1 className="text-xl font-bold text-slate-900 leading-snug">{t.title}</h1>
+                {t.description && (
+                  <p className="mt-2 text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    {t.description}
+                  </p>
+                )}
+              </div>
 
           {/* Quick Metrics Cards */}
           <div className="grid grid-cols-2 gap-3">
@@ -228,6 +377,8 @@ export const TaskDetailDrawer: React.FC = () => {
               </form>
             )}
           </div>
+            </>
+          )}
         </div>
 
         {/* Drawer Footer Actions */}

@@ -1,5 +1,6 @@
-﻿-- 001_initial_schema.sql
+-- 001_initial_schema.sql
 -- TimeWeave Database Schema Migration
+-- Dual-engine compatible: PostgreSQL and SQLite
 
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -9,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT DEFAULT 'Professional',
     timezone TEXT DEFAULT 'UTC',
     avatar_url TEXT,
+    bio TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -42,7 +44,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     actual_duration_minutes INTEGER DEFAULT 0,
     energy_requirement TEXT DEFAULT 'Medium',
     flexibility TEXT DEFAULT 'Flexible',
-    is_active_timer BOOLEAN DEFAULT 0,
+    is_active_timer BOOLEAN DEFAULT FALSE,
     timer_started_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -60,11 +62,12 @@ CREATE TABLE IF NOT EXISTS task_dependencies (
 
 CREATE TABLE IF NOT EXISTS task_time_sessions (
     id TEXT PRIMARY KEY,
-    task_id TEXT NOT NULL,
+    task_id TEXT,
     user_id TEXT NOT NULL,
     started_at TIMESTAMP NOT NULL,
     ended_at TIMESTAMP,
     duration_minutes INTEGER DEFAULT 0,
+    session_status TEXT DEFAULT 'completed',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -106,7 +109,7 @@ CREATE TABLE IF NOT EXISTS schedule_blocks (
     block_type TEXT DEFAULT 'task',
     category TEXT DEFAULT 'Work',
     priority TEXT DEFAULT 'Medium',
-    is_fixed BOOLEAN DEFAULT 0,
+    is_fixed BOOLEAN DEFAULT FALSE,
     reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (schedule_version_id) REFERENCES schedule_versions(id) ON DELETE CASCADE,
@@ -145,10 +148,21 @@ CREATE TABLE IF NOT EXISTS notifications (
     title TEXT NOT NULL,
     message TEXT NOT NULL,
     link_route TEXT,
-    is_read BOOLEAN DEFAULT 0,
+    is_read BOOLEAN DEFAULT FALSE,
     read_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS model_metrics (
+    id TEXT PRIMARY KEY,
+    model_version TEXT NOT NULL,
+    evaluation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    training_sample_count INTEGER DEFAULT 0,
+    mae REAL,
+    rmse REAL,
+    r2 REAL,
+    evaluation_metadata TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
@@ -156,3 +170,4 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
 CREATE INDEX IF NOT EXISTS idx_schedule_user_date ON schedule_versions(user_id, target_date);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_time_sessions_user ON task_time_sessions(user_id, started_at);

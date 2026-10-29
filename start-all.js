@@ -1,16 +1,30 @@
-﻿const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const path = require('path');
 
 console.log('====================================================');
 console.log('  TimeWeave — Adaptive Personal Time Optimizer');
-console.log('  Starting all services: Backend, ML Service, Frontend');
+console.log('  Starting all services: ML Service, Backend, Frontend');
 console.log('====================================================\n');
 
 function runService(name, command, args, cwd) {
   const proc = spawn(command, args, {
     cwd,
     shell: true,
-    stdio: 'inherit'
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  proc.stdout.on('data', (data) => {
+    const lines = data.toString().trim().split('\n');
+    lines.forEach(line => {
+      if (line.trim()) console.log(`[${name}] ${line}`);
+    });
+  });
+
+  proc.stderr.on('data', (data) => {
+    const lines = data.toString().trim().split('\n');
+    lines.forEach(line => {
+      if (line.trim()) console.error(`[${name}] ${line}`);
+    });
   });
 
   proc.on('error', (err) => {
@@ -18,20 +32,23 @@ function runService(name, command, args, cwd) {
   });
 
   proc.on('close', (code) => {
-    console.log(`[${name}] Process exited with code ${code}`);
+    if (code !== null && code !== 0) {
+      console.log(`[${name}] Process exited with code ${code}`);
+    }
   });
 
   return proc;
 }
 
 const rootDir = __dirname;
+const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 // 1. Python FastAPI ML Service on port 8000
 console.log('[Startup] Launching Python AI/ML Service on port 8000...');
 const mlProc = runService(
   'ML Service',
   'python',
-  ['ml_service/main.py'],
+  ['-u', 'ml_service/main.py'],
   rootDir
 );
 
@@ -39,7 +56,7 @@ const mlProc = runService(
 console.log('[Startup] Launching Express Backend API on port 5000...');
 const backendProc = runService(
   'Backend',
-  'npm',
+  npmCmd,
   ['run', 'dev'],
   path.join(rootDir, 'backend')
 );
@@ -48,15 +65,32 @@ const backendProc = runService(
 console.log('[Startup] Launching React Vite Frontend on port 3000...');
 const frontendProc = runService(
   'Frontend',
-  'npm',
+  npmCmd,
   ['run', 'dev'],
   path.join(rootDir, 'frontend')
 );
 
-process.on('SIGINT', () => {
+const procs = [
+  { name: 'ML Service', proc: mlProc },
+  { name: 'Backend', proc: backendProc },
+  { name: 'Frontend', proc: frontendProc }
+];
+
+function shutdown() {
   console.log('\n[TimeWeave] Shutting down all services...');
-  mlProc.kill();
-  backendProc.kill();
-  frontendProc.kill();
+  for (const { name, proc } of procs) {
+    if (proc && proc.pid) {
+      try {
+        if (process.platform === 'win32') {
+          execSync(`taskkill /pid ${proc.pid} /T /F 2>nul`);
+        } else {
+          proc.kill('SIGTERM');
+        }
+      } catch (e) {}
+    }
+  }
   process.exit(0);
-});
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   User,
   Sliders,
@@ -35,6 +35,45 @@ export const SettingsPage: React.FC = () => {
   const [energyPreference, setEnergyPreference] = useState(preferences?.energy_preference || 'Morning');
   const [isSavingPrefs, setIsSavingPrefs] = useState(false);
   const [prefsSuccess, setPrefsSuccess] = useState(false);
+
+  // Password state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    if (!currentPassword) {
+      setPasswordError('Please enter your current password.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      await api.changePassword({ currentPassword, newPassword });
+      setPasswordSuccess(true);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordSuccess(false), 4000);
+    } catch (err: any) {
+      setPasswordError(err.message || 'Failed to update password');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,11 +374,76 @@ export const SettingsPage: React.FC = () => {
           {activeTab === 'privacy' && (
             <div className="space-y-6">
               <div className="border-b border-slate-100 pb-3">
-                <h2 className="text-base font-bold text-slate-900">Privacy & ML Data</h2>
+                <h2 className="text-base font-bold text-slate-900">Security & Authentication</h2>
                 <p className="text-xs text-slate-500">
-                  TimeWeave learns from your task history locally to personalize duration regression estimates.
+                  Update your security credentials and manage account privacy settings.
                 </p>
               </div>
+
+              {/* Password Change Form */}
+              <form onSubmit={handleChangePassword} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Change Password</h3>
+
+                {passwordSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-xl flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>Password updated successfully!</span>
+                  </div>
+                )}
+
+                {passwordError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl">
+                    {passwordError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Current Password</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20"
+                    placeholder="Enter existing password"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">New Password</label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Min 6 characters"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Confirm New Password</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Repeat new password"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-1">
+                  <button
+                    type="submit"
+                    disabled={isChangingPassword}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition disabled:opacity-50"
+                  >
+                    {isChangingPassword ? 'Updating...' : 'Update Password'}
+                  </button>
+                </div>
+              </form>
 
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                 <h3 className="text-xs font-bold text-slate-800 uppercase">Clear Machine Learning History</h3>

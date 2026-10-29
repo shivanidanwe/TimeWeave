@@ -1,4 +1,6 @@
-﻿import os
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -142,12 +144,114 @@ def analyze_workload(req: WorkloadAnalysisRequest):
 def chat_assistant(req: ChatAssistantRequest):
     user_msg = req.message.lower().strip()
     tasks = req.tasks or []
-    
-    # 1. Schedule feasibility analysis (matches Screen 11 reference conversation!)
-    if "realistic" in user_msg or "feasible" in user_msg or "how many tasks" in user_msg or "tomorrow" in user_msg or "schedule" in user_msg:
-        active_tasks = [t for t in tasks if t.get("status") not in ["Completed", "completed"]]
+    active_tasks = [t for t in tasks if t.get("status") not in ["Completed", "completed", "done"]]
+    today_str = datetime.date.today().isoformat()
+
+    # 1. "Which tasks are overdue?"
+    if "overdue" in user_msg or "late" in user_msg:
+        overdue_tasks = []
+        for t in active_tasks:
+            dline = t.get("deadline")
+            if dline and dline < today_str:
+                overdue_tasks.append(t)
+
+        if overdue_tasks:
+            items_text = "\n".join(f"• **{t['title']}** (Due: {t.get('deadline')}, Priority: {t.get('priority', 'Medium')})" for t in overdue_tasks)
+            return {
+                "reply": f"You currently have {len(overdue_tasks)} overdue task(s):\n\n{items_text}\n\nI recommend tackling the highest priority one first or adjusting their deadlines in your task manager.",
+                "actions": [
+                    {"label": "Which should I do next?", "action": "suggest_next"},
+                    {"label": "Reschedule overdue tasks", "action": "optimize_today"}
+                ]
+            }
+        else:
+            return {
+                "reply": "🎉 Great news! None of your active tasks are overdue. All deadlines are comfortably on track.",
+                "actions": [
+                    {"label": "Which task should I do next?", "action": "suggest_next"},
+                    {"label": "Plan my day", "action": "plan_day"}
+                ]
+            }
+
+    # 2. "Which task should I do next?"
+    if "next" in user_msg or "what should i do" in user_msg or "recommend task" in user_msg:
+        if not active_tasks:
+            return {
+                "reply": "You don't have any pending tasks right now! Create a new task or take a well-deserved break.",
+                "actions": [{"label": "Create new task", "action": "create_task"}]
+            }
+
+        # Rank by Priority (Critical > High > Medium > Low) and Energy
+        prio_weights = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
+        ranked = sorted(active_tasks, key=lambda x: prio_weights.get(x.get("priority", "Medium"), 1), reverse=True)
+        top_task = ranked[0]
+        est = top_task.get("current_predicted_minutes") or top_task.get("user_estimated_minutes") or 60
+
+        return {
+            "reply": (
+                f"I recommend working on **{top_task['title']}** next.\n\n"
+                f"• **Category**: {top_task.get('category', 'Work')}\n"
+                f"• **Priority**: {top_task.get('priority', 'Medium')}\n"
+                f"• **Estimated Duration**: {est} minutes\n"
+                f"• **Energy Level**: {top_task.get('energy_requirement', 'Medium')}\n\n"
+                "Would you like to start a focus timer for this task?"
+            ),
+            "actions": [
+                {"label": "Start Focus Timer", "action": "start_focus", "task_id": top_task.get("id")},
+                {"label": "Plan my full day", "action": "plan_day"}
+            ]
+        }
+
+    # 3. "Do I have enough time for these tasks?" / Workload capacity check
+    if "enough time" in user_msg or "capacity" in user_msg or "how much time" in user_msg:
+        total_requested = sum(
+            t.get("current_predicted_minutes") or t.get("user_estimated_minutes") or 60
+            for t in active_tasks
+        )
+        prefs = req.preferences or {}
+        day_start = prefs.get("work_start_time", "09:00")
+        day_end = prefs.get("work_end_time", "18:00")
+        start_m = int(day_start.split(":")[0]) * 60 + int(day_start.split(":")[1])
+        end_m = int(day_end.split(":")[0]) * 60 + int(day_end.split(":")[1])
+        available = max(0, end_m - start_m)
+
+        hours_req = total_requested // 60
+        mins_req = total_requested % 60
+        hours_avail = available // 60
+        mins_avail = available % 60
+
+        utilization = round((total_requested / max(1, available)) * 100, 1)
+
+        if utilization > 100:
+            return {
+                "reply": (
+                    f"⚠️ **Capacity Warning**: Your active tasks require approximately **{hours_req}h {mins_req}m**, "
+                    f"which exceeds your configured working day ({hours_avail}h {mins_avail}m from {day_start} to {day_end}) at **{utilization}% capacity**.\n\n"
+                    "I suggest moving 1 or 2 lower-priority tasks to tomorrow so you can finish on time without burnout."
+                ),
+                "actions": [
+                    {"label": "Optimize & Fit Available Time", "action": "optimize_today"},
+                    {"label": "Show alternatives", "action": "show_alternatives"}
+                ]
+            }
+        else:
+            free_mins = available - total_requested
+            return {
+                "reply": (
+                    f"✅ **Yes, you have enough time!**\n\n"
+                    f"• **Required Workload**: {hours_req}h {mins_req}m across {len(active_tasks)} task(s)\n"
+                    f"• **Available Working Time**: {hours_avail}h {mins_avail}m\n"
+                    f"• **Utilization**: {utilization}% (Leaves {free_mins // 60}h {free_mins % 60}m for breaks and buffer)"
+                ),
+                "actions": [
+                    {"label": "Plan my schedule now", "action": "plan_day"},
+                    {"label": "Which task to do next?", "action": "suggest_next"}
+                ]
+            }
+
+    # 4. "Plan my day" / "Tomorrow" / "Schedule"
+    if "plan" in user_msg or "realistic" in user_msg or "feasible" in user_msg or "tomorrow" in user_msg or "schedule" in user_msg:
         sched = scheduler.schedule(tasks=active_tasks, preferences=req.preferences)
-        
         total_mins = sched["planned_work_minutes"]
         hours = total_mins // 60
         mins = total_mins % 60
@@ -159,33 +263,32 @@ def chat_assistant(req: ChatAssistantRequest):
         
         analysis_points = []
         if unsched > 0:
-            analysis_points.append(f"⚠️ {len(sched['scheduled_blocks'])} blocks fit, but {unsched} task(s) cause overcommitment")
+            analysis_points.append(f"⚠️ {len(sched['scheduled_blocks'])} blocks fit, but {unsched} task(s) exceed available daily capacity")
         else:
-            analysis_points.append(f"✅ {len(active_tasks)} tasks are realistic (total: {time_str})")
+            analysis_points.append(f"✅ {len(active_tasks)} tasks fit comfortably (total: {time_str})")
             
         if util > 100:
-            analysis_points.append(f"⚠️ Overall workload is {util}% of available capacity")
+            analysis_points.append(f"⚠️ Overall workload utilization is {util}%")
         else:
             analysis_points.append(f"⚡ Workload utilization is comfortable at {util}%")
             
-        # Build suggested schedule outline
         schedule_preview = []
         idx = 1
         for b in sched["scheduled_blocks"]:
             if b.get("block_type") == "task":
                 dur = b["duration_minutes"]
                 dur_text = f"{dur//60}h {dur%60}m" if dur>=60 and dur%60!=0 else f"{dur//60}h" if dur>=60 else f"{dur}m"
-                schedule_preview.append(f"{idx}. {b['title']} - {b['start_at']} ({dur_text})")
+                schedule_preview.append(f"{idx}. {b['title']} — {b['start_at']} ({dur_text})")
                 idx += 1
             elif b.get("block_type") == "break":
-                schedule_preview.append(f"• {b['title']} - {b['start_at']}")
+                schedule_preview.append(f"☕ {b['title']} — {b['start_at']}")
 
         reply = (
-            f"Based on your past data and current workload, here's the analysis:\n\n"
+            f"Here is your personalized schedule analysis:\n\n"
             + "\n".join(f"- {p}" for p in analysis_points) + "\n\n"
-            + "Suggested optimized schedule:\n"
+            + "**Proposed Timeline:**\n"
             + "\n".join(schedule_preview) + "\n\n"
-            + "Would you like me to create this schedule for you?"
+            + "Would you like to apply and activate this schedule?"
         )
 
         return {
@@ -198,16 +301,21 @@ def chat_assistant(req: ChatAssistantRequest):
             "schedule_data": sched
         }
 
-    # General productivity tips
+    # General deterministic productivity assistant
     return {
         "reply": (
-            "I'm your TimeWeave AI productivity coach! I can analyze your schedule feasibility, "
-            "optimize task blocks based on your energy patterns, detect overcommitment, and adjust estimates. "
-            "Try asking: 'I have 5 tasks tomorrow. Is it realistic?' or 'Optimize my day'."
+            "I'm your TimeWeave AI productivity coach! Here are some things you can ask me:\n\n"
+            "• **'Plan my day'** — Generate an energy-aware schedule with breaks\n"
+            "• **'Which tasks are overdue?'** — Check missed deadlines\n"
+            "• **'Do I have enough time for these tasks?'** — Compare workload to capacity\n"
+            "• **'Which task should I do next?'** — Prioritize by urgency and energy\n"
+            "• **'Show me my workload for tomorrow'** — View upcoming commitments"
         ),
         "actions": [
-            {"label": "Is tomorrow realistic?", "action": "check_feasibility"},
-            {"label": "Optimize today's schedule", "action": "optimize_today"}
+            {"label": "Plan my day", "action": "plan_day"},
+            {"label": "Which task should I do next?", "action": "suggest_next"},
+            {"label": "Which tasks are overdue?", "action": "check_overdue"},
+            {"label": "Do I have enough time?", "action": "check_time"}
         ]
     }
 
@@ -217,4 +325,4 @@ def train_model(req: TrainRequest):
     return res
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)

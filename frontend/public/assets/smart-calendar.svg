@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="calBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#EEF2FF"/>
+    </linearGradient>
+    <filter id="calShadow" x="-5%" y="-5%" width="110%" height="115%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#312E81" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="500" rx="24" fill="url(#calBg)"/>
+
+  <!-- Calendar Container -->
+  <g transform="translate(40, 30)" filter="url(#calShadow)">
+    <rect width="720" height="440" rx="20" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+
+    <!-- Header bar -->
+    <rect width="720" height="60" rx="20" fill="#FFFFFF"/>
+    <rect y="40" width="720" height="20" fill="#FFFFFF"/>
+    <line x1="0" y1="60" x2="720" y2="60" stroke="#F1F5F9" stroke-width="1.5"/>
+
+    <!-- Navigation -->
+    <text x="32" y="38" font-family="system-ui, sans-serif" font-size="18" font-weight="800" fill="#0F172A">Adaptive Weekly Timetable</text>
+    <text x="320" y="38" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#64748B">September 2026</text>
+
+    <!-- Category Legend Pills -->
+    <g transform="translate(480, 22)">
+      <circle cx="8" cy="8" r="5" fill="#6366F1"/>
+      <text x="18" y="12" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#475569">Study</text>
+      <circle cx="70" cy="8" r="5" fill="#0D9488"/>
+      <text x="80" y="12" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#475569">Work</text>
+      <circle cx="132" cy="8" r="5" fill="#F59E0B"/>
+      <text x="142" y="12" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#475569">Break</text>
+      <circle cx="190" cy="8" r="5" fill="#10B981"/>
+      <text x="200" y="12" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#475569">Health</text>
+    </g>
+
+    <!-- Days of week column headers -->
+    <g transform="translate(80, 60)">
+      <!-- Columns: Mon(0-120), Tue(120-240), Wed(240-360), Thu(360-480), Fri(480-600) -->
+      <line x1="0" y1="0" x2="0" y2="380" stroke="#F1F5F9"/>
+      <line x1="128" y1="0" x2="128" y2="380" stroke="#F1F5F9"/>
+      <line x1="256" y1="0" x2="256" y2="380" stroke="#F1F5F9"/>
+      <line x1="384" y1="0" x2="384" y2="380" stroke="#F1F5F9"/>
+      <line x1="512" y1="0" x2="512" y2="380" stroke="#F1F5F9"/>
+      <line x1="640" y1="0" x2="640" y2="380" stroke="#F1F5F9"/>
+
+      <!-- Day labels -->
+      <text x="64" y="24" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#64748B">Mon 21</text>
+      <text x="192" y="24" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#64748B">Tue 22</text>
+      <text x="320" y="24" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#6366F1">Wed 23 (Today)</text>
+      <text x="448" y="24" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#64748B">Thu 24</text>
+      <text x="576" y="24" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#64748B">Fri 25</text>
+      
+      <line x1="0" y1="36" x2="640" y2="36" stroke="#E2E8F0"/>
+    </g>
+
+    <!-- Hours labels left axis -->
+    <g transform="translate(16, 96)" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#94A3B8">
+      <text x="0" y="30">09:00 AM</text>
+      <text x="0" y="90">11:00 AM</text>
+      <text x="0" y="150">01:00 PM</text>
+      <text x="0" y="210">03:00 PM</text>
+      <text x="0" y="270">05:00 PM</text>
+      <text x="0" y="330">06:00 PM</text>
+    </g>
+
+    <!-- Calendar Blocks -->
+    <g transform="translate(80, 96)">
+      <!-- Horizontal hour grid lines -->
+      <line x1="0" y1="20" x2="640" y2="20" stroke="#F8FAFC"/>
+      <line x1="0" y1="80" x2="640" y2="80" stroke="#F8FAFC"/>
+      <line x1="0" y1="140" x2="640" y2="140" stroke="#F8FAFC"/>
+      <line x1="0" y1="200" x2="640" y2="200" stroke="#F8FAFC"/>
+      <line x1="0" y1="260" x2="640" y2="260" stroke="#F8FAFC"/>
+
+      <!-- Monday blocks -->
+      <rect x="8" y="10" width="112" height="65" rx="8" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1.5"/>
+      <text x="16" y="28" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#312E81">ML Algorithms</text>
+      <text x="16" y="44" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#6366F1">9:00 - 10:30 AM</text>
+
+      <!-- Tuesday blocks -->
+      <rect x="136" y="70" width="112" height="75" rx="8" fill="#F0FDFA" stroke="#99F6E4" stroke-width="1.5"/>
+      <text x="144" y="88" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#134E4A">API Development</text>
+      <text x="144" y="104" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#0D9488">10:30 - 12:00 PM</text>
+
+      <!-- Wednesday (Today) Highlighted Schedule Column -->
+      <rect x="256" y="0" width="128" height="344" fill="#6366F1" fill-opacity="0.03"/>
+      
+      <rect x="264" y="10" width="112" height="60" rx="8" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.5"/>
+      <text x="272" y="28" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#1E1B4B">Deep Learning Lab</text>
+      <text x="272" y="42" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#4338CA">09:00 - 10:15 AM</text>
+
+      <!-- Break -->
+      <rect x="264" y="75" width="112" height="25" rx="6" fill="#FEF3C7" stroke="#FDE68A" stroke-width="1.5"/>
+      <text x="272" y="91" font-family="system-ui, sans-serif" font-size="9.5" font-weight="700" fill="#92400E">☕ Cognitive Break</text>
+
+      <!-- Afternoon Task -->
+      <rect x="264" y="105" width="112" height="75" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+      <text x="272" y="123" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#134E4A">PostgreSQL Migration</text>
+      <text x="272" y="137" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#0D9488">10:35 - 12:15 PM</text>
+
+      <!-- Universal Lunch -->
+      <rect x="8" y="185" width="624" height="26" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-dasharray="4 4"/>
+      <text x="320" y="202" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9.5" font-weight="700" fill="#64748B">🍽️ Protected Daily Restorative Lunch Window (1:00 PM – 1:45 PM)</text>
+
+      <!-- Gym Task -->
+      <rect x="264" y="260" width="112" height="50" rx="8" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1.5"/>
+      <text x="272" y="278" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#065F46">Gym &amp; Cardio</text>
+      <text x="272" y="292" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#059669">05:00 - 05:45 PM</text>
+
+      <!-- Thursday blocks -->
+      <rect x="392" y="30" width="112" height="70" rx="8" fill="#FAF5FF" stroke="#E9D5FF" stroke-width="1.5"/>
+      <text x="400" y="48" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#581C87">Personal Projects</text>
+      <text x="400" y="64" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#7E22CE">09:30 - 11:00 AM</text>
+
+      <!-- Friday blocks -->
+      <rect x="520" y="80" width="112" height="85" rx="8" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1.5"/>
+      <text x="528" y="98" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#312E81">Weekly Retrospective</text>
+      <text x="528" y="114" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#6366F1">11:00 - 12:30 PM</text>
+    </g>
+  </g>
+</svg>

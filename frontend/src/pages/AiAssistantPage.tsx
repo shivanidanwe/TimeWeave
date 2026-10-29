@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Bot,
   User,
@@ -7,7 +7,9 @@ import {
   Plus,
   Check,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTasks } from '../context/TaskContext';
@@ -20,26 +22,15 @@ export const AiAssistantPage: React.FC = () => {
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
-      id: '1',
+      id: 'welcome',
       sender: 'assistant',
-      content: 'Hello! I am your TimeWeave AI productivity coach. How can I help you optimize your schedule today?',
-      timestamp: '10:00 AM'
-    },
-    {
-      id: '2',
-      sender: 'user',
-      content: 'I have 5 tasks tomorrow. Is it realistic?',
-      timestamp: '10:01 AM'
-    },
-    {
-      id: '3',
-      sender: 'assistant',
-      content: `Based on your past data and task characteristics, here's the analysis:\n\n• 3 tasks are realistic (total: 4h 30m)\n• 1 task may need more time (Machine Learning Model)\n• 1 task might cause overcommitment if delayed\n\nSuggested optimized schedule:\n1. ML Lecture — 9:00 AM (1h)\n2. Project Work — 10:30 AM (1h 30m)\n3. Lunch Break — 12:00 PM (1h)\n4. Research Paper — 1:00 PM (1h)\n5. Workout — 5:00 PM (1h)\n\nWould you like me to create this schedule for you?`,
-      timestamp: '10:01 AM',
+      content: "Hello! I am your TimeWeave AI productivity coach. I analyze your actual tasks, durations, and preferences to help you stay balanced.\n\nTry selecting one of the suggested prompts below or ask me anything about your schedule!",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       actions: [
-        { label: 'Yes, create schedule', action: 'apply_schedule' },
-        { label: 'Show alternatives', action: 'show_alternatives' },
-        { label: 'No, keep as is', action: 'dismiss' }
+        { label: 'Plan my day', action: 'plan_day' },
+        { label: 'Which tasks are overdue?', action: 'check_overdue' },
+        { label: 'Do I have enough time?', action: 'check_time' },
+        { label: 'Which task should I do next?', action: 'suggest_next' }
       ]
     }
   ]);
@@ -56,16 +47,13 @@ export const AiAssistantPage: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!inputMessage.trim() || isSending) return;
+  const sendQuery = async (queryText: string) => {
+    if (!queryText.trim() || isSending) return;
 
-    const userText = inputMessage.trim();
-    setInputMessage('');
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       sender: 'user',
-      content: userText,
+      content: queryText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -73,7 +61,7 @@ export const AiAssistantPage: React.FC = () => {
     setIsSending(true);
 
     try {
-      const res = await api.sendChatMessage(userText, messages);
+      const res = await api.sendChatMessage(queryText, messages);
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'assistant',
@@ -86,12 +74,8 @@ export const AiAssistantPage: React.FC = () => {
       const errorMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'assistant',
-        content: 'I analyzed your pending tasks. You have high focus efficiency in the morning! Would you like me to schedule them into your available calendar slots?',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        actions: [
-          { label: 'Yes, create schedule', action: 'apply_schedule' },
-          { label: 'Show alternatives', action: 'show_alternatives' }
-        ]
+        content: `I analyzed your tasks. You currently have ${tasks.filter(t => t.status !== 'Completed').length} pending tasks. Head to 'AI Planner' or 'Calendar' to generate a full energy-aware schedule.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
@@ -99,126 +83,124 @@ export const AiAssistantPage: React.FC = () => {
     }
   };
 
-  const handleActionClick = async (action: string) => {
-    if (action === 'apply_schedule') {
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const text = inputMessage.trim();
+    setInputMessage('');
+    sendQuery(text);
+  };
+
+  const handleActionClick = async (action: any) => {
+    if (action.action === 'apply_schedule') {
       try {
-        const sched = await api.generateSchedule('2026-09-24');
-        if (sched.schedule_version_id) {
-          await api.acceptSchedule(sched.schedule_version_id);
-        }
-        setMessages((prev) => [
-          ...prev,
-          {
+        const schedRes = await api.generateSchedule();
+        if (schedRes?.schedule_version_id) {
+          await api.acceptSchedule(schedRes.schedule_version_id);
+          const confirmMsg: ChatMessage = {
             id: Date.now().toString(),
             sender: 'assistant',
-            content: 'Great! Your optimized schedule has been created and activated in your Calendar. You can view it on your Calendar and Dashboard pages.',
+            content: '✅ Your schedule has been successfully created, activated, and saved to your calendar!',
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          }
-        ]);
-      } catch (err) {
-        alert('Schedule applied successfully!');
+          };
+          setMessages(prev => [...prev, confirmMsg]);
+        }
+      } catch (e: any) {
+        alert('Failed to activate schedule: ' + e.message);
       }
-    } else if (action === 'show_alternatives') {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          sender: 'assistant',
-          content: 'Alternative plan: Split deep research work across 2 consecutive mornings (Tuesday & Wednesday), shifting lighter administrative tasks to Friday afternoon.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
     } else {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          sender: 'assistant',
-          content: 'Understood. Keeping your existing plan unchanged. Let me know whenever you need another feasibility review!',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
+      sendQuery(action.label);
     }
   };
 
-  const startNewChat = () => {
-    setMessages([
-      {
-        id: Date.now().toString(),
-        sender: 'assistant',
-        content: 'New chat started. What would you like to plan or optimize?',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }
-    ]);
-  };
+  const promptSuggestions = [
+    'Plan my day.',
+    'Which tasks are overdue?',
+    'Do I have enough time for these tasks?',
+    'Which task should I do next?',
+    'Show me my workload for tomorrow.'
+  ];
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm flex flex-col h-[750px] overflow-hidden animate-in fade-in duration-200">
-      {/* Header matching Screen 11 */}
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+    <div className="flex flex-col h-[calc(100vh-140px)] max-w-5xl mx-auto bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden animate-in fade-in duration-200">
+      {/* Chat Header */}
+      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-[#6366F1] flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#6366F1] to-[#818CF8] flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
             <Bot className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-slate-900">AI Assistant</h1>
-            <p className="text-xs text-slate-500">Your personal productivity coach</p>
+            <h1 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>TimeWeave AI Assistant</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            </h1>
+            <p className="text-xs text-slate-500">Adaptive Scheduling Coach &amp; Workload Advisor</p>
           </div>
         </div>
 
-        <button
-          onClick={startNewChat}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>New Chat</span>
-        </button>
+        <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+          Deterministic &amp; Data-Backed
+        </span>
       </div>
 
-      {/* Message Thread (Screen 11) */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-slate-50/30">
+      {/* Suggested Quick Prompts Bar */}
+      <div className="px-6 py-2.5 bg-slate-50/80 border-b border-slate-100 flex items-center gap-2 overflow-x-auto no-scrollbar">
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+          <Sparkles className="w-3 h-3 text-indigo-500" />
+          <span>Quick:</span>
+        </span>
+        {promptSuggestions.map((prompt, i) => (
+          <button
+            key={i}
+            onClick={() => sendQuery(prompt)}
+            disabled={isSending}
+            className="px-3 py-1 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 transition shrink-0 shadow-2xs"
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
+
+      {/* Messages Thread */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {messages.map((msg) => {
           const isUser = msg.sender === 'user';
           return (
             <div
               key={msg.id}
-              className={`flex gap-3 max-w-2xl ${isUser ? 'ml-auto flex-row-reverse' : ''}`}
+              className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
             >
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                   isUser
-                    ? 'bg-[#6366F1] text-white'
-                    : 'bg-indigo-100 text-indigo-700'
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-indigo-50 text-indigo-600 border border-indigo-100'
                 }`}
               >
-                {isUser ? user?.name ? user.name[0].toUpperCase() : 'U' : <Bot className="w-4 h-4" />}
+                {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
               </div>
 
-              <div className="space-y-2">
+              <div className={`space-y-2 max-w-lg ${isUser ? 'text-right' : ''}`}>
                 <div
-                  className={`p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line shadow-xs ${
+                  className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${
                     isUser
-                      ? 'bg-[#6366F1] text-white rounded-tr-none'
-                      : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
+                      ? 'bg-[#6366F1] text-white rounded-tr-xs'
+                      : 'bg-slate-50 border border-slate-200/80 text-slate-800 rounded-tl-xs'
                   }`}
                 >
-                  {msg.content}
+                  <p className="whitespace-pre-line text-left">{msg.content}</p>
                 </div>
 
-                {/* Quick Action Buttons (Screen 11) */}
+                {/* Interactive Action Buttons */}
                 {msg.actions && msg.actions.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2 pt-1">
-                    {msg.actions.map((act, idx) => (
+                    {msg.actions.map((act: any, idx: number) => (
                       <button
                         key={idx}
-                        onClick={() => handleActionClick(act.action)}
-                        className={`text-xs font-bold px-3.5 py-1.5 rounded-xl border transition shadow-xs active:scale-95 ${
-                          idx === 0
-                            ? 'bg-[#6366F1] text-white border-[#6366F1] hover:bg-[#4F46E5]'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                        }`}
+                        onClick={() => handleActionClick(act)}
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-[#6366F1] border border-indigo-200 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs active:scale-95"
                       >
-                        {act.label}
+                        <span>{act.label}</span>
+                        <ArrowRight className="w-3 h-3" />
                       </button>
                     ))}
                   </div>
@@ -231,22 +213,36 @@ export const AiAssistantPage: React.FC = () => {
             </div>
           );
         })}
+
+        {isSending && (
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div className="p-3 bg-slate-50 rounded-2xl text-xs text-slate-500 flex items-center gap-2 border border-slate-200">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></div>
+              <span>Analyzing tasks, capacity, and deadlines...</span>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Bar (Screen 11) */}
-      <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100 bg-white flex items-center gap-2">
+      {/* Input Bar */}
+      <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100 bg-white flex items-center gap-3">
         <input
           type="text"
-          placeholder="Type your message... (e.g. 'Is my schedule realistic?')"
+          placeholder="Ask a scheduling question (e.g. 'Plan my day', 'Which tasks are overdue?')..."
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
-          className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+          disabled={isSending}
+          className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
         />
         <button
           type="submit"
           disabled={!inputMessage.trim() || isSending}
-          className="w-11 h-11 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-2xl flex items-center justify-center shadow-md shadow-indigo-500/20 transition active:scale-95 disabled:opacity-50 shrink-0"
+          className="w-11 h-11 rounded-2xl bg-[#6366F1] hover:bg-[#4F46E5] text-white flex items-center justify-center shadow-md shadow-indigo-500/20 transition disabled:opacity-40 active:scale-95 shrink-0"
         >
           <Send className="w-4 h-4" />
         </button>

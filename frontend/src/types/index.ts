@@ -1,4 +1,4 @@
-﻿export interface User {
+export interface User {
   id: string;
   name: string;
   email: string;
@@ -90,6 +90,7 @@ export interface ScheduleGenerationResult {
   break_minutes: number;
   free_capacity_minutes: number;
   overload_minutes: number;
+  total_requested_minutes?: number;
   scheduled_blocks: ScheduleBlock[];
   unscheduled_tasks: any[];
   recommendations: Array<{
@@ -116,6 +117,7 @@ export interface DashboardOverview {
 }
 
 export interface AnalyticsData {
+  has_data?: boolean;
   productivity_percentage: number;
   total_focus_hours: number;
   task_completion_rate: number;

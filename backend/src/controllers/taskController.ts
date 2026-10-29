@@ -1,4 +1,4 @@
-﻿import { Response } from 'express';
+import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { db } from '../db';
@@ -210,7 +210,7 @@ export const createTask = async (req: AuthenticatedRequest, res: Response): Prom
       for (const depId of dependencies) {
         if (depId && depId !== taskId) {
           await db.query(
-            'INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id) VALUES ($1, $2)',
+            'INSERT INTO task_dependencies (task_id, depends_on_task_id) VALUES ($1, $2) ON CONFLICT (task_id, depends_on_task_id) DO NOTHING',
             [taskId, depId]
           );
         }
@@ -300,7 +300,7 @@ export const updateTask = async (req: AuthenticatedRequest, res: Response): Prom
       for (const depId of dependencies) {
         if (depId && depId !== id) {
           await db.query(
-            'INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id) VALUES ($1, $2)',
+            'INSERT INTO task_dependencies (task_id, depends_on_task_id) VALUES ($1, $2) ON CONFLICT (task_id, depends_on_task_id) DO NOTHING',
             [id, depId]
           );
         }
@@ -353,7 +353,7 @@ export const completeTask = async (req: AuthenticatedRequest, res: Response): Pr
         status = 'Completed',
         completed_at = CURRENT_TIMESTAMP,
         actual_duration_minutes = $1,
-        is_active_timer = 0,
+        is_active_timer = FALSE,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = $2 AND user_id = $3`,
       [finalActual, id, userId]
@@ -405,7 +405,7 @@ export const startTimer = async (req: AuthenticatedRequest, res: Response): Prom
 
     // Stop any existing active timers for this user to maintain single focus
     await db.query(
-      `UPDATE tasks SET is_active_timer = 0 WHERE user_id = $1 AND is_active_timer = 1`,
+      `UPDATE tasks SET is_active_timer = FALSE WHERE user_id = $1 AND is_active_timer = TRUE`,
       [userId]
     );
 
@@ -418,7 +418,7 @@ export const startTimer = async (req: AuthenticatedRequest, res: Response): Prom
 
     await db.query(
       `UPDATE tasks SET
-        is_active_timer = 1,
+        is_active_timer = TRUE,
         status = CASE WHEN status = 'Pending' THEN 'In Progress' ELSE status END,
         timer_started_at = CURRENT_TIMESTAMP
        WHERE id = $1`,
@@ -463,7 +463,7 @@ export const stopTimer = async (req: AuthenticatedRequest, res: Response): Promi
 
     await db.query(
       `UPDATE tasks SET
-        is_active_timer = 0,
+        is_active_timer = FALSE,
         actual_duration_minutes = actual_duration_minutes + $1,
         timer_started_at = NULL,
         updated_at = CURRENT_TIMESTAMP

@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "timeweave",
   "version": "1.0.0",
   "description": "TimeWeave - Adaptive Personal Time and Workload Optimizer",
@@ -8,6 +8,7 @@
     "dev:backend": "cd backend && npm run dev",
     "dev:ml": "python ml_service/main.py",
     "build": "cd frontend && npm run build && cd ../backend && npm run build",
+    "seed": "cd backend && npm run seed",
     "test": "node test-all.js"
   },
   "keywords": [

@@ -1,4 +1,4 @@
-﻿import { Response } from 'express';
+import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { db } from '../db';
@@ -125,7 +125,7 @@ export const generateSchedule = async (req: AuthenticatedRequest, res: Response)
           block.block_type || 'task',
           block.category || 'Work',
           block.priority || 'Medium',
-          block.is_fixed ? 1 : 0,
+          Boolean(block.is_fixed),
           block.reason || ''
         ]
       );
@@ -261,6 +261,77 @@ export const updateScheduleBlock = async (req: AuthenticatedRequest, res: Respon
 
     const updated = await db.query('SELECT * FROM schedule_blocks WHERE id = $1', [blockId]);
     res.json({ message: 'Schedule block updated', block: updated.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const getSchedules = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { target_date } = req.query;
+
+    let sql = 'SELECT * FROM schedule_versions WHERE user_id = $1';
+    const params: any[] = [userId];
+
+    if (target_date) {
+      sql += ' AND target_date = $2';
+      params.push(target_date);
+    }
+
+    sql += ' ORDER BY created_at DESC LIMIT 20';
+    const versionsRes = await db.query(sql, params);
+
+    res.json({ schedules: versionsRes.rows });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const getScheduleById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const verRes = await db.query('SELECT * FROM schedule_versions WHERE id = $1 AND user_id = $2', [id, userId]);
+    if (verRes.rows.length === 0) {
+      res.status(404).json({ error: 'Schedule not found' });
+      return;
+    }
+
+    const blocksRes = await db.query(
+      'SELECT * FROM schedule_blocks WHERE schedule_version_id = $1 ORDER BY start_at ASC',
+      [id]
+    );
+
+    res.json({
+      schedule: verRes.rows[0],
+      blocks: blocksRes.rows
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const deleteScheduleItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const blockRes = await db.query(
+      `SELECT sb.id FROM schedule_blocks sb
+       JOIN schedule_versions sv ON sb.schedule_version_id = sv.id
+       WHERE sb.id = $1 AND sv.user_id = $2`,
+      [id, userId]
+    );
+
+    if (blockRes.rows.length === 0) {
+      res.status(404).json({ error: 'Schedule item not found' });
+      return;
+    }
+
+    await db.query('DELETE FROM schedule_blocks WHERE id = $1', [id]);
+    res.json({ message: 'Schedule item removed' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar as CalendarIcon,
@@ -56,7 +56,16 @@ export const DashboardPage: React.FC = () => {
     fetchDashboardData();
   }, [tasks]);
 
-  const userName = user?.name ? user.name.split(' ')[0] : 'Shivani';
+  const todayFormatted = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+  const currentHour = new Date().getHours();
+  const timeGreeting = currentHour < 12 ? 'Good Morning' : currentHour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const userName = user?.name ? user.name.split(' ')[0] : 'there';
 
   const categoryBadgeColors: Record<string, string> = {
     Study: 'bg-indigo-50 text-indigo-700 border-indigo-200',
@@ -73,11 +82,11 @@ export const DashboardPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <span>Good Morning, {userName}!</span>
-            <span className="text-2xl">☀️</span>
+            <span>{timeGreeting}, {userName}!</span>
+            <span className="text-2xl">{currentHour < 17 ? '☀️' : '🌙'}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 flex items-center gap-2">
-            <span className="font-semibold text-slate-700">Friday, 25 Sep 2026</span>
+            <span className="font-semibold text-slate-700">{todayFormatted}</span>
             <span>•</span>
             <span className="italic">"Small steps every day lead to big results."</span>
           </p>
@@ -110,7 +119,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div>
             <span className="text-2xl font-extrabold text-slate-900 leading-none">
-              {overview?.tasks_today ?? 5}
+              {overview?.tasks_today ?? 0}
             </span>
             <span className="text-xs text-slate-500 font-semibold block mt-1">Tasks Today</span>
           </div>
@@ -123,7 +132,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div>
             <span className="text-2xl font-extrabold text-slate-900 leading-none">
-              {overview?.completed_today ?? 3}
+              {overview?.completed_today ?? 0}
             </span>
             <span className="text-xs text-slate-500 font-semibold block mt-1">Completed</span>
           </div>
@@ -136,7 +145,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div>
             <span className="text-2xl font-extrabold text-slate-900 leading-none">
-              {overview?.focus_time_display || '2h 30m'}
+              {overview?.focus_time_display || '0h 0m'}
             </span>
             <span className="text-xs text-slate-500 font-semibold block mt-1">Focus Time</span>
           </div>
@@ -149,7 +158,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div>
             <span className="text-2xl font-extrabold text-slate-900 leading-none">
-              {overview?.productivity_score ?? 82}%
+              {overview?.productivity_score ?? 0}%
             </span>
             <span className="text-xs text-slate-500 font-semibold block mt-1">Productivity Score</span>
           </div>
@@ -304,7 +313,7 @@ export const DashboardPage: React.FC = () => {
             <span>AI Insight</span>
           </span>
           <p className="text-xs sm:text-sm text-indigo-950 font-medium">
-            {overview?.ai_insight || 'You are 20% overcommitted on Wednesday. Consider moving 1 low-priority task to Thursday.'}
+            {overview?.ai_insight || 'Complete a few tasks to unlock your personalized insights.'}
           </p>
         </div>
 

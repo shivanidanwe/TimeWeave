@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
   Pause,
@@ -8,69 +8,170 @@ import {
   ShieldCheck,
   Coffee,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2,
+  Clock
 } from 'lucide-react';
 import { useTasks } from '../context/TaskContext';
+import { api } from '../api/client';
+
+const FOCUS_STORAGE_KEY = 'timeweave_focus_state_v1';
 
 export const FocusPage: React.FC = () => {
-  const { tasks, completeTask, recordInterruption } = useTasks();
+  const { tasks, recordInterruption, completeTask } = useTasks();
 
   const [mode, setMode] = useState<'pomodoro' | 'custom' | 'stopwatch'>('pomodoro');
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [initialMinutes, setInitialMinutes] = useState(25);
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
-  const [pomodorosCompleted, setPomodorosCompleted] = useState(4);
   const [distractionsCount, setDistractionsCount] = useState(0);
+
+  // Focus sessions history from database
+  const [pastSessions, setPastSessions] = useState<any[]>([]);
+  const [totalFocusMins, setTotalFocusMins] = useState(0);
+
+  const fetchSessionHistory = async () => {
+    try {
+      const res = await api.getFocusSessions();
+      setPastSessions(res.sessions || []);
+      setTotalFocusMins(res.total_minutes || 0);
+    } catch (e) {
+      console.warn('Could not load focus sessions:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchSessionHistory();
+  }, []);
 
   // Set default task if available
   useEffect(() => {
     if (tasks.length > 0 && !selectedTaskId) {
       setSelectedTaskId(tasks[0].id);
     }
-  }, [tasks]);
+  }, [tasks, selectedTaskId]);
 
+  // Timestamp-based State Recovery across page refreshes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(FOCUS_STORAGE_KEY);
+      if (saved) {
+        const state = JSON.parse(saved);
+        if (state.mode) setMode(state.mode);
+        if (state.initialMinutes) setInitialMinutes(state.initialMinutes);
+        if (state.selectedTaskId) setSelectedTaskId(state.selectedTaskId);
+
+        if (state.isRunning && state.startedAt) {
+          const now = Date.now();
+          const elapsed = Math.floor((now - state.startedAt) / 1000);
+          const remaining = Math.max(0, (state.secondsLeftAtStart || 25 * 60) - elapsed);
+
+          if (remaining > 0) {
+            setSecondsLeft(remaining);
+            setIsRunning(true);
+          } else {
+            // Finished while away
+            setSecondsLeft(0);
+            setIsRunning(false);
+          }
+        } else if (state.secondsLeft !== undefined) {
+          setSecondsLeft(state.secondsLeft);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse focus timer storage:', e);
+    }
+  }, []);
+
+  // Live Timer Interval synced to wall clock
   useEffect(() => {
     let interval: any = null;
+
     if (isRunning && secondsLeft > 0) {
       interval = setInterval(() => {
-        setSecondsLeft((prev) => prev - 1);
+        setSecondsLeft((prev) => {
+          if (prev <= 1) {
+            handleSessionCompleted();
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
-    } else if (secondsLeft === 0 && isRunning) {
-      setIsRunning(false);
-      setPomodorosCompleted((prev) => prev + 1);
-      alert('Focus session complete! Take a restorative break.');
     }
-    return () => clearInterval(interval);
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [isRunning, secondsLeft]);
 
+  const saveTimerState = (running: boolean, remaining: number) => {
+    try {
+      localStorage.setItem(
+        FOCUS_STORAGE_KEY,
+        JSON.stringify({
+          isRunning: running,
+          startedAt: running ? Date.now() : null,
+          secondsLeftAtStart: remaining,
+          secondsLeft: remaining,
+          initialMinutes,
+          mode,
+          selectedTaskId
+        })
+      );
+    } catch (e) {}
+  };
+
+  const handleSessionCompleted = async () => {
+    setIsRunning(false);
+    saveTimerState(false, 0);
+
+    const completedMins = Math.max(1, initialMinutes);
+    try {
+      await api.createFocusSession({
+        task_id: selectedTaskId || null,
+        duration_minutes: completedMins,
+        session_status: 'completed'
+      });
+      await fetchSessionHistory();
+    } catch (e) {
+      console.warn('Failed to record completed focus session:', e);
+    }
+
+    alert('🎉 Focus session complete! Take a well-deserved restorative break.');
+  };
+
   const toggleTimer = () => {
-    setIsRunning(!isRunning);
+    const nextRunning = !isRunning;
+    setIsRunning(nextRunning);
+    saveTimerState(nextRunning, secondsLeft);
   };
 
   const resetTimer = () => {
     setIsRunning(false);
-    setSecondsLeft(initialMinutes * 60);
+    const secs = initialMinutes * 60;
+    setSecondsLeft(secs);
+    saveTimerState(false, secs);
   };
 
   const skipTimer = () => {
     setIsRunning(false);
+    setInitialMinutes(5);
     setSecondsLeft(5 * 60); // 5 min break
+    saveTimerState(false, 5 * 60);
   };
 
   const handleModeChange = (newMode: 'pomodoro' | 'custom' | 'stopwatch') => {
     setMode(newMode);
     setIsRunning(false);
-    if (newMode === 'pomodoro') {
-      setInitialMinutes(25);
-      setSecondsLeft(25 * 60);
-    } else if (newMode === 'custom') {
-      setInitialMinutes(50);
-      setSecondsLeft(50 * 60);
-    } else {
-      setInitialMinutes(0);
-      setSecondsLeft(0);
-    }
+    let mins = 25;
+    if (newMode === 'pomodoro') mins = 25;
+    else if (newMode === 'custom') mins = 50;
+    else mins = 15;
+
+    setInitialMinutes(mins);
+    setSecondsLeft(mins * 60);
+    saveTimerState(false, mins * 60);
   };
 
   const formatTime = (secs: number) => {
@@ -82,9 +183,11 @@ export const FocusPage: React.FC = () => {
   const handleAddDistraction = async () => {
     setDistractionsCount(prev => prev + 1);
     if (selectedTaskId) {
-      await recordInterruption(selectedTaskId, 'Quick distraction in focus mode', 5);
+      await recordInterruption(selectedTaskId, 'Focus mode distraction', 5);
     }
   };
+
+  const hoursFocusDisplay = `${Math.floor(totalFocusMins / 60)}h ${totalFocusMins % 60}m`;
 
   return (
     <div className="relative rounded-3xl overflow-hidden bg-gradient-to-b from-[#0F172A] via-[#1E1B4B] to-[#090D16] text-white p-6 sm:p-12 min-h-[750px] flex flex-col items-center justify-between shadow-2xl border border-indigo-900/40 animate-in fade-in duration-300">
@@ -92,16 +195,16 @@ export const FocusPage: React.FC = () => {
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-      {/* Header (Screen 9) */}
+      {/* Header */}
       <div className="text-center z-10 space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-bold border border-indigo-500/30">
           <Flame className="w-3.5 h-3.5 text-amber-400" />
           <span>Deep Flow Zone</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Focus Mode</h1>
-        <p className="text-sm text-slate-400">Stay focused. You can do it!</p>
+        <p className="text-sm text-slate-400">Timestamp-synced timer • Survives browser refreshes</p>
 
-        {/* Mode Tabs: [Pomodoro] [Custom] [Stopwatch] */}
+        {/* Mode Tabs: [Pomodoro] [Custom] [Short] */}
         <div className="inline-flex p-1 bg-slate-900/80 border border-slate-800 rounded-2xl mt-4 text-xs font-bold">
           <button
             onClick={() => handleModeChange('pomodoro')}
@@ -109,7 +212,7 @@ export const FocusPage: React.FC = () => {
               mode === 'pomodoro' ? 'bg-[#6366F1] text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Pomodoro
+            Pomodoro (25m)
           </button>
           <button
             onClick={() => handleModeChange('custom')}
@@ -117,7 +220,7 @@ export const FocusPage: React.FC = () => {
               mode === 'custom' ? 'bg-[#6366F1] text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Custom
+            Deep Sprint (50m)
           </button>
           <button
             onClick={() => handleModeChange('stopwatch')}
@@ -125,7 +228,7 @@ export const FocusPage: React.FC = () => {
               mode === 'stopwatch' ? 'bg-[#6366F1] text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Stopwatch
+            Short Focus (15m)
           </button>
         </div>
       </div>
@@ -135,7 +238,10 @@ export const FocusPage: React.FC = () => {
         <div className="z-10 w-full max-w-sm mt-4">
           <select
             value={selectedTaskId}
-            onChange={(e) => setSelectedTaskId(e.target.value)}
+            onChange={(e) => {
+              setSelectedTaskId(e.target.value);
+              saveTimerState(isRunning, secondsLeft);
+            }}
             className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-4 py-2 text-xs font-medium text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             {tasks.map((t) => (
@@ -147,7 +253,7 @@ export const FocusPage: React.FC = () => {
         </div>
       )}
 
-      {/* Large Circular Timer (Screen 9) */}
+      {/* Large Circular Timer */}
       <div className="z-10 my-8 relative flex items-center justify-center">
         {/* Glow Ring */}
         <div className={`w-72 h-72 sm:w-80 sm:h-80 rounded-full border-4 border-indigo-500/20 flex flex-col items-center justify-center relative transition-all ${
@@ -160,12 +266,12 @@ export const FocusPage: React.FC = () => {
             {formatTime(secondsLeft)}
           </span>
           <span className="text-xs uppercase tracking-widest text-indigo-300 font-bold mt-2">
-            {isRunning ? 'Focus' : 'Ready'}
+            {isRunning ? 'Flow Active' : 'Ready'}
           </span>
         </div>
       </div>
 
-      {/* Control Buttons (Screen 9) */}
+      {/* Control Buttons */}
       <div className="z-10 flex items-center gap-4">
         <button
           onClick={resetTimer}
@@ -185,26 +291,26 @@ export const FocusPage: React.FC = () => {
         <button
           onClick={skipTimer}
           className="w-12 h-12 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition border border-slate-700 active:scale-95"
-          title="Skip to break"
+          title="Switch to 5m Restorative Break"
         >
           <SkipForward className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Bottom 3 Stats Badges (Screen 9) */}
+      {/* Bottom 3 Stats Badges */}
       <div className="z-10 mt-10 grid grid-cols-3 gap-3 sm:gap-6 w-full max-w-lg border-t border-slate-800/80 pt-6 text-center">
         <div className="bg-slate-900/60 p-3 rounded-2xl border border-slate-800/80">
           <span className="text-xl sm:text-2xl font-extrabold text-white block">
-            {pomodorosCompleted}
+            {pastSessions.length}
           </span>
-          <span className="text-[11px] text-slate-400 font-semibold">Pomodoros</span>
+          <span className="text-[11px] text-slate-400 font-semibold">Sessions Completed</span>
         </div>
 
         <div className="bg-slate-900/60 p-3 rounded-2xl border border-slate-800/80">
           <span className="text-xl sm:text-2xl font-extrabold text-indigo-400 block">
-            2h
+            {hoursFocusDisplay}
           </span>
-          <span className="text-[11px] text-slate-400 font-semibold">Focus Time</span>
+          <span className="text-[11px] text-slate-400 font-semibold">Total Focus Time</span>
         </div>
 
         <div
@@ -216,7 +322,7 @@ export const FocusPage: React.FC = () => {
             {distractionsCount}
           </span>
           <span className="text-[11px] text-slate-400 font-semibold group-hover:text-rose-300">
-            + Distraction
+            + Interruption
           </span>
         </div>
       </div>

@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 import sys
 import os
 
@@ -9,7 +9,13 @@ from model import model
 from optimizer import scheduler
 
 class TestMLAndOptimizer(unittest.TestCase):
-    def test_cold_start_baseline(self):
+    def test_model_loading_and_health(self):
+        """Test model initialization and versioning."""
+        self.assertIsNotNone(model.version)
+        self.assertIn("1.0", model.version)
+
+    def test_cold_start_insufficient_history(self):
+        """Test fallback to baseline heuristic when history count < 5."""
         task = {
             "title": "Study Linear Algebra",
             "category": "Study",
@@ -21,7 +27,8 @@ class TestMLAndOptimizer(unittest.TestCase):
         self.assertGreaterEqual(res["predicted_minutes"], 30)
         self.assertIn("Base duration for 'Study'", res["explanations"][0])
 
-    def test_personalized_prediction(self):
+    def test_personalized_prediction_and_bounds(self):
+        """Test duration prediction bounds and upper/lower confidence intervals."""
         task = {
             "title": "Code Review and Testing",
             "category": "Work",
@@ -33,8 +40,27 @@ class TestMLAndOptimizer(unittest.TestCase):
         self.assertIn(res["prediction_source"], ["ml_personalized", "baseline"])
         self.assertGreater(res["predicted_minutes"], 0)
         self.assertTrue(res["confidence_lower"] <= res["predicted_minutes"] <= res["confidence_upper"])
+        # Ensure predicted minutes fall within sensible realistic bounds (15 to 480 mins)
+        self.assertGreaterEqual(res["predicted_minutes"], 15)
+        self.assertLessEqual(res["predicted_minutes"], 480)
+
+    def test_invalid_input_handling(self):
+        """Test graceful fallback for empty, missing, or malformed task inputs."""
+        empty_task = {}
+        res = model.predict(empty_task, user_history_count=0)
+        self.assertGreaterEqual(res["predicted_minutes"], 15)
+        self.assertEqual(res["prediction_source"], "baseline")
+
+    def test_baseline_multipliers(self):
+        """Test category and priority heuristic multipliers."""
+        high_task = {"category": "Work", "priority": "Critical", "energy_requirement": "High"}
+        low_task = {"category": "Work", "priority": "Low", "energy_requirement": "Low"}
+        pred_high, _ = model.calculate_baseline(high_task)
+        pred_low, _ = model.calculate_baseline(low_task)
+        self.assertGreater(pred_high, pred_low)
 
     def test_scheduler_constraints_and_breaks(self):
+        """Test that tasks respect workday boundaries and automatic breaks are placed."""
         tasks = [
             {"id": "t1", "title": "ML Lecture", "category": "Study", "priority": "High", "current_predicted_minutes": 60, "energy_requirement": "High"},
             {"id": "t2", "title": "Project Work", "category": "Work", "priority": "Medium", "current_predicted_minutes": 90, "energy_requirement": "Medium"},
@@ -60,15 +86,69 @@ class TestMLAndOptimizer(unittest.TestCase):
             next_start = blocks[i+1]["start_at"]
             self.assertTrue(curr_end <= next_start, f"Overlap detected: block {i} ends at {curr_end}, next starts at {next_start}")
 
+    def test_overcommitment_detection(self):
+        """Test detection of overcommitment when planned work exceeds capacity."""
+        excessive_tasks = [
+            {"id": f"t_{i}", "title": f"Heavy Task {i}", "category": "Work", "priority": "High", "current_predicted_minutes": 120}
+            for i in range(6) # 12 hours of work in an 8-hour day
+        ]
+        prefs = {
+            "work_start_time": "09:00",
+            "work_end_time": "17:00", # 8 hours (480 mins)
+            "break_duration": 30
+        }
+        res = scheduler.schedule(tasks=excessive_tasks, preferences=prefs)
+
+        self.assertEqual(res["status"], "Overcommitted")
+        self.assertGreater(res["utilization_percentage"], 100)
+        self.assertGreater(len(res["unscheduled_tasks"]), 0)
+        self.assertTrue(any("capacity reached" in u.get("unscheduled_reason", "").lower() for u in res["unscheduled_tasks"]))
+        # Verify an overcommitment recommendation is generated
+        self.assertTrue(any(r.get("type") == "overcommitment" for r in res.get("recommendations", [])))
+
     def test_dependency_enforcement(self):
+        """Test that dependent tasks are held unscheduled until prerequisite finishes."""
         tasks = [
             {"id": "t1", "title": "Draft Architecture", "status": "Pending", "current_predicted_minutes": 60},
             {"id": "t2", "title": "Implement API", "dependencies": ["t1"], "status": "Pending", "current_predicted_minutes": 60}
         ]
         res = scheduler.schedule(tasks=tasks)
-        # t2 should be unscheduled or blocked because t1 is not completed
         unscheduled_reasons = [u.get("unscheduled_reason", "") for u in res["unscheduled_tasks"]]
         self.assertTrue(any("Prerequisite task(s)" in r for r in unscheduled_reasons))
+
+    def test_energy_aware_task_placement(self):
+        """Test that high energy tasks are scheduled in morning when preferred energy is Morning."""
+        tasks = [
+            {"id": "t_high", "title": "Complex Algorithm Design", "category": "Work", "priority": "High", "energy_requirement": "High", "current_predicted_minutes": 60},
+            {"id": "t_low", "title": "Inbox Zero", "category": "Work", "priority": "Low", "energy_requirement": "Low", "current_predicted_minutes": 60}
+        ]
+        prefs = {
+            "work_start_time": "09:00",
+            "work_end_time": "17:00",
+            "energy_preference": "Morning"
+        }
+        res = scheduler.schedule(tasks=tasks, preferences=prefs)
+        blocks = res["scheduled_blocks"]
+        # Find block for t_high
+        high_block = next((b for b in blocks if b.get("task_id") == "t_high"), None)
+        self.assertIsNotNone(high_block)
+        # Should be scheduled before noon
+        hour = int(high_block["start_at"].split(":")[0])
+        self.assertLess(hour, 12)
+
+    def test_lunch_break_preservation(self):
+        """Test that a continuous full workday inserts protected lunch break."""
+        tasks = [
+            {"id": "t1", "title": "Morning Task", "category": "Work", "priority": "High", "current_predicted_minutes": 180},
+            {"id": "t2", "title": "Afternoon Task", "category": "Work", "priority": "Medium", "current_predicted_minutes": 180}
+        ]
+        prefs = {
+            "work_start_time": "09:00",
+            "work_end_time": "18:00"
+        }
+        res = scheduler.schedule(tasks=tasks, preferences=prefs)
+        has_break = any(b.get("block_type") == "break" for b in res["scheduled_blocks"])
+        self.assertTrue(has_break)
 
 if __name__ == '__main__':
     unittest.main()

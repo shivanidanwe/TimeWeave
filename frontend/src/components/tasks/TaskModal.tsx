@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Clock, Calendar as CalendarIcon, AlertCircle, Layers } from 'lucide-react';
 import { useTasks } from '../../context/TaskContext';
 import { api } from '../../api/client';
@@ -11,7 +11,7 @@ export const TaskModal: React.FC = () => {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<'Study' | 'Work' | 'Personal' | 'Health' | 'Other'>('Study');
   const [priority, setPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('High');
-  const [deadline, setDeadline] = useState('2026-09-25');
+  const [deadline, setDeadline] = useState(() => new Date().toISOString().split('T')[0]);
   const [deadlineTime, setDeadlineTime] = useState('23:59');
   const [userEstimatedMinutes, setUserEstimatedMinutes] = useState(60);
   const [energyRequirement, setEnergyRequirement] = useState<'Low' | 'Medium' | 'High'>('High');
