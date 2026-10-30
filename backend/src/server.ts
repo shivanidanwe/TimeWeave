@@ -5,9 +5,10 @@ import { db } from './db';
 import { apiRouter } from './routes';
 
 const app = express();
+app.disable('x-powered-by');
 
 app.use(cors({
-  origin: '*',
+  origin: config.corsOrigin,
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -40,6 +41,8 @@ async function startServer() {
   }
 }
 
-startServer();
+if (require.main === module) {
+  void startServer();
+}
 
 export default app;

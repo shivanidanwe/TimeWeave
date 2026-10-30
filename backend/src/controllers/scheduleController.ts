@@ -5,6 +5,117 @@ import { db } from '../db';
 import { config } from '../config/env';
 import { AuthenticatedRequest } from '../middleware/auth';
 
+function parseTime(value: unknown, fallback: number): number {
+  if (typeof value !== 'string' || !/^\d{1,2}:\d{2}/.test(value)) return fallback;
+  const [hours, minutes] = value.split(':').map(Number);
+  if (hours > 23 || minutes > 59) return fallback;
+  return hours * 60 + minutes;
+}
+
+function formatTime(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+export function buildFallbackSchedule(tasks: any[], preferences: any, targetDate: string): any {
+  const dayStart = parseTime(preferences.work_start_time, 9 * 60);
+  const dayEnd = parseTime(preferences.work_end_time, 18 * 60);
+  const dayMinutes = Math.max(0, dayEnd - dayStart);
+  const breakDuration = Math.max(0, Number(preferences.break_duration) || 0);
+  const maxContinuousWork = Math.max(15, Number(preferences.max_continuous_work_minutes) || 120);
+  const priorityRank: Record<string, number> = { Critical: 4, High: 3, Medium: 2, Low: 1 };
+  const orderedTasks = [...tasks].sort((a, b) => {
+    const priorityDifference = (priorityRank[b.priority] || 2) - (priorityRank[a.priority] || 2);
+    if (priorityDifference !== 0) return priorityDifference;
+    return String(a.deadline || '9999-12-31').localeCompare(String(b.deadline || '9999-12-31'));
+  });
+  const blocks: any[] = [];
+  const unscheduled: any[] = [];
+  const requestedMinutes = orderedTasks.reduce(
+    (total, task) => total + Math.max(1, Number(task.current_predicted_minutes || task.user_estimated_minutes || 60)),
+    0
+  );
+  let cursor = dayStart;
+  let continuousWork = 0;
+  let scheduledWork = 0;
+  let scheduledBreaks = 0;
+
+  for (const task of orderedTasks) {
+    const duration = Math.max(1, Number(task.current_predicted_minutes || task.user_estimated_minutes || 60));
+    const needsBreak = continuousWork > 0 && continuousWork + duration > maxContinuousWork && breakDuration > 0;
+    if (needsBreak && cursor + breakDuration + duration <= dayEnd) {
+      blocks.push({
+        task_id: null,
+        title: `Focus Recovery Break (${breakDuration}m)`,
+        start_at: formatTime(cursor),
+        end_at: formatTime(cursor + breakDuration),
+        duration_minutes: breakDuration,
+        block_type: 'break',
+        category: 'Break',
+        priority: 'Low',
+        is_fixed: false,
+        reason: 'Scheduled recovery interval'
+      });
+      cursor += breakDuration;
+      scheduledBreaks += breakDuration;
+      continuousWork = 0;
+    }
+
+    const deadline = task.deadline ? new Date(task.deadline) : null;
+    const dueToday = deadline && !Number.isNaN(deadline.getTime()) &&
+      `${deadline.getFullYear()}-${String(deadline.getMonth() + 1).padStart(2, '0')}-${String(deadline.getDate()).padStart(2, '0')}` === targetDate;
+    const deadlineMinutes = dueToday ? deadline!.getHours() * 60 + deadline!.getMinutes() : dayEnd;
+    if (cursor + duration > Math.min(dayEnd, deadlineMinutes)) {
+      unscheduled.push({
+        ...task,
+        unscheduled_reason: cursor + duration > dayEnd
+          ? 'Task does not fit in the remaining working capacity.'
+          : 'Task would finish after its deadline.'
+      });
+      continue;
+    }
+
+    blocks.push({
+      task_id: task.id,
+      title: task.title,
+      start_at: formatTime(cursor),
+      end_at: formatTime(cursor + duration),
+      duration_minutes: duration,
+      block_type: 'task',
+      category: task.category || 'Work',
+      priority: task.priority || 'Medium',
+      is_fixed: false,
+      reason: `Scheduled by priority and deadline (${task.priority || 'Medium'})`
+    });
+    cursor += duration;
+    scheduledWork += duration;
+    continuousWork += duration;
+  }
+
+  const capacity = Math.max(0, dayMinutes - scheduledBreaks);
+  const utilization = capacity > 0 ? Math.round((requestedMinutes / capacity) * 1000) / 10 : (requestedMinutes > 0 ? 100 : 0);
+  const status = unscheduled.length > 0 || utilization > 100
+    ? 'Overcommitted'
+    : utilization >= 80 ? 'Near Capacity' : 'Available Capacity';
+
+  return {
+    target_date: targetDate,
+    status,
+    utilization_percentage: utilization,
+    total_day_minutes: dayMinutes,
+    planned_work_minutes: scheduledWork,
+    total_requested_minutes: requestedMinutes,
+    break_minutes: scheduledBreaks,
+    free_capacity_minutes: Math.max(0, dayMinutes - scheduledWork - scheduledBreaks),
+    overload_minutes: Math.max(0, requestedMinutes - capacity),
+    scheduled_blocks: blocks,
+    unscheduled_tasks: unscheduled,
+    recommendations: unscheduled.length > 0
+      ? [{ type: 'overcommitment', title: 'Some tasks could not be scheduled', description: 'Review the unscheduled task reasons or move work to another day.' }]
+      : [],
+    optimizer_version: 'deterministic-fallback-v1'
+  };
+}
+
 export const generateSchedule = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.id;
@@ -38,6 +149,7 @@ export const generateSchedule = async (req: AuthenticatedRequest, res: Response)
     let scheduleData: any;
     try {
       const mlRes = await axios.post(`${config.mlServiceUrl}/generate-schedule`, {
+        user_id: userId,
         tasks,
         preferences: mergedPrefs,
         target_date: targetDate
@@ -45,42 +157,7 @@ export const generateSchedule = async (req: AuthenticatedRequest, res: Response)
       scheduleData = mlRes.data;
     } catch (err: any) {
       // Local fallback constraint scheduler if ML service is offline
-      scheduleData = {
-        target_date: targetDate,
-        status: 'Available Capacity',
-        utilization_percentage: 65,
-        total_day_minutes: 540,
-        planned_work_minutes: tasks.reduce((acc: number, t: any) => acc + (t.current_predicted_minutes || t.user_estimated_minutes || 60), 0),
-        break_minutes: 45,
-        free_capacity_minutes: 180,
-        overload_minutes: 0,
-        scheduled_blocks: tasks.map((t: any, i: number) => {
-          const startH = 9 + Math.floor(i * 1.5);
-          return {
-            task_id: t.id,
-            title: t.title,
-            start_at: `${String(startH).padStart(2, '0')}:00`,
-            end_at: `${String(startH + 1).padStart(2, '0')}:00`,
-            start_time_display: `${startH}:00 AM`,
-            end_time_display: `${startH + 1}:00 AM`,
-            duration_minutes: t.current_predicted_minutes || t.user_estimated_minutes || 60,
-            block_type: 'task',
-            category: t.category || 'Work',
-            priority: t.priority || 'Medium',
-            is_fixed: false,
-            reason: `Scheduled by priority (${t.priority})`
-          };
-        }),
-        unscheduled_tasks: [],
-        recommendations: [
-          {
-            type: 'break_suggestion',
-            title: 'Add 30 min break after 2 hours',
-            description: 'Improves productivity (+25%)',
-            action_type: 'add_break'
-          }
-        ]
-      };
+      scheduleData = buildFallbackSchedule(tasks, mergedPrefs, targetDate);
     }
 
     // 4. Create preview draft version

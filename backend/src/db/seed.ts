@@ -1,8 +1,13 @@
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './index';
+import { config } from '../config/env';
 
 export async function seedDemoData() {
+  if (config.nodeEnv !== 'development') {
+    throw new Error('Demo seeding is restricted to NODE_ENV=development.');
+  }
+
   console.log('[TimeWeave Seed] Starting development demo data seeding...');
 
   await db.runMigrations();

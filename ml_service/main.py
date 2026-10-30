@@ -1,5 +1,6 @@
 import os
 import sys
+import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -7,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
-from model import model
+from model import model, user_models
 from optimizer import scheduler
 
 app = FastAPI(
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 
 class TaskPredictionRequest(BaseModel):
+    user_id: Optional[str] = None
     title: str = "Task Title"
     description: Optional[str] = ""
     category: str = "Work"
@@ -44,6 +46,7 @@ class BatchPredictionRequest(BaseModel):
 
 class ScheduleGenerationRequest(BaseModel):
     tasks: List[Dict[str, Any]]
+    user_id: Optional[str] = None
     preferences: Optional[Dict[str, Any]] = None
     fixed_events: Optional[List[Dict[str, Any]]] = None
     target_date: Optional[str] = None
@@ -59,6 +62,7 @@ class ChatAssistantRequest(BaseModel):
     conversation_history: Optional[List[Dict[str, str]]] = None
 
 class TrainRequest(BaseModel):
+    user_id: str = Field(min_length=1, max_length=128)
     records: List[Dict[str, Any]]
 
 @app.get("/health")
@@ -73,12 +77,14 @@ def health_check():
     }
 
 @app.get("/model-info")
-def get_model_info():
+def get_model_info(user_id: Optional[str] = None):
+    selected_model = user_models.get(user_id)
     return {
-        "version": model.version,
-        "training_samples": model.training_samples,
-        "mae": model.mae,
-        "r2": model.r2,
+        "version": selected_model.version,
+        "training_samples": selected_model.training_samples,
+        "mae": selected_model.mae,
+        "rmse": selected_model.rmse,
+        "r2": selected_model.r2,
         "features": {
             "categorical": ["category", "priority", "energy_requirement", "flexibility"],
             "numerical": ["user_estimated_minutes", "word_count", "day_of_week", "hour_of_day", "has_dependencies"]
@@ -92,7 +98,9 @@ def get_model_info():
 @app.post("/predict-duration")
 def predict_duration(req: TaskPredictionRequest):
     data = req.model_dump()
-    res = model.predict(data, user_history_count=req.user_history_count or 0)
+    res = user_models.get(data.get("user_id")).predict(
+        data, user_history_count=req.user_history_count or 0
+    )
     return res
 
 @app.post("/batch-predict")
@@ -100,7 +108,9 @@ def batch_predict(req: BatchPredictionRequest):
     results = []
     for t in req.tasks:
         d = t.model_dump()
-        pred = model.predict(d, user_history_count=req.user_history_count or 0)
+        pred = user_models.get(d.get("user_id")).predict(
+            d, user_history_count=req.user_history_count or 0
+        )
         results.append({
             "title": t.title,
             **pred
@@ -114,7 +124,9 @@ def generate_schedule(req: ScheduleGenerationRequest):
     for t in req.tasks:
         t_copy = dict(t)
         if not t_copy.get("current_predicted_minutes"):
-            pred = model.predict(t_copy, user_history_count=t_copy.get("user_history_count", 0))
+            pred = user_models.get(req.user_id).predict(
+                t_copy, user_history_count=t_copy.get("user_history_count", 0)
+            )
             t_copy["current_predicted_minutes"] = pred["predicted_minutes"]
             t_copy["prediction_source"] = pred["prediction_source"]
         enriched_tasks.append(t_copy)
@@ -321,8 +333,13 @@ def chat_assistant(req: ChatAssistantRequest):
 
 @app.post("/train")
 def train_model(req: TrainRequest):
-    res = model.train(req.records)
+    res = user_models.get(req.user_id).train(req.records)
     return res
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=int(os.environ.get("ML_SERVICE_PORT", "8000")),
+        reload=False
+    )

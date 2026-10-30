@@ -42,9 +42,12 @@ function runService(name, command, args, cwd) {
 
 const rootDir = __dirname;
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const mlPort = process.env.ML_SERVICE_PORT || '8000';
+const backendPort = process.env.PORT || '5000';
+const frontendPort = process.env.FRONTEND_PORT || '3000';
 
 // 1. Python FastAPI ML Service on port 8000
-console.log('[Startup] Launching Python AI/ML Service on port 8000...');
+console.log(`[Startup] Launching Python AI/ML Service on port ${mlPort}...`);
 const mlProc = runService(
   'ML Service',
   'python',
@@ -53,7 +56,7 @@ const mlProc = runService(
 );
 
 // 2. Node.js Express Backend on port 5000
-console.log('[Startup] Launching Express Backend API on port 5000...');
+console.log(`[Startup] Launching Express Backend API on port ${backendPort}...`);
 const backendProc = runService(
   'Backend',
   npmCmd,
@@ -62,7 +65,7 @@ const backendProc = runService(
 );
 
 // 3. React Vite Frontend on port 3000
-console.log('[Startup] Launching React Vite Frontend on port 3000...');
+console.log(`[Startup] Launching React Vite Frontend on port ${frontendPort}...`);
 const frontendProc = runService(
   'Frontend',
   npmCmd,

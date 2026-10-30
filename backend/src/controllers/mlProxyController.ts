@@ -5,7 +5,10 @@ import { AuthenticatedRequest } from '../middleware/auth';
 
 export const predictDuration = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const mlRes = await axios.post(`${config.mlServiceUrl}/predict-duration`, req.body, { timeout: 4000 });
+    const mlRes = await axios.post(`${config.mlServiceUrl}/predict-duration`, {
+      ...req.body,
+      user_id: req.user!.id
+    }, { timeout: 4000 });
     res.json(mlRes.data);
   } catch (err: any) {
     // Fallback baseline heuristic
@@ -45,7 +48,10 @@ export const optimizeSchedule = async (req: AuthenticatedRequest, res: Response)
 
 export const getModelStatus = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const mlRes = await axios.get(`${config.mlServiceUrl}/health`, { timeout: 3000 });
+    const mlRes = await axios.get(`${config.mlServiceUrl}/model-info`, {
+      params: { user_id: req.user!.id },
+      timeout: 3000
+    });
     res.json(mlRes.data);
   } catch (err: any) {
     res.json({

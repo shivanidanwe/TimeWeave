@@ -5,10 +5,11 @@ import { db } from '../db';
 import { config } from '../config/env';
 import { AuthenticatedRequest } from '../middleware/auth';
 
-async function fetchDurationPrediction(taskData: any, userHistoryCount: number) {
+async function fetchDurationPrediction(taskData: any, userHistoryCount: number, userId: string) {
   try {
     const res = await axios.post(`${config.mlServiceUrl}/predict-duration`, {
       ...taskData,
+      user_id: userId,
       user_history_count: userHistoryCount
     }, { timeout: 3000 });
     return res.data;
@@ -27,6 +28,40 @@ async function fetchDurationPrediction(taskData: any, userHistoryCount: number) 
       model_version: 'baseline-local',
       explanations: [`Category '${cat}' standard baseline: ${base} mins`]
     };
+  }
+}
+
+async function retrainUserDurationModel(userId: string): Promise<void> {
+  try {
+    const historyRes = await db.query(
+      `SELECT title, description, category, priority, energy_requirement, flexibility,
+              user_estimated_minutes, actual_duration_minutes, completed_at
+       FROM tasks
+       WHERE user_id = $1 AND status = 'Completed' AND actual_duration_minutes > 0
+       ORDER BY completed_at ASC`,
+      [userId]
+    );
+    const records = historyRes.rows.map((task: any) => {
+      const completedAt = task.completed_at ? new Date(task.completed_at) : new Date();
+      return {
+        ...task,
+        day_of_week: completedAt.getDay(),
+        hour_of_day: completedAt.getHours()
+      };
+    });
+
+    if (records.length < 5) return;
+
+    const statusRes = await axios.get(`${config.mlServiceUrl}/model-info`, {
+      params: { user_id: userId },
+      timeout: 3000
+    });
+    const trainedSamples = Number(statusRes.data.training_samples || 0);
+    if (records.length - trainedSamples < 5) return;
+
+    await axios.post(`${config.mlServiceUrl}/train`, { user_id: userId, records }, { timeout: 10000 });
+  } catch {
+    console.warn('[ML] User model refresh skipped; the ML service is unavailable.');
   }
 }
 
@@ -159,7 +194,7 @@ export const createTask = async (req: AuthenticatedRequest, res: Response): Prom
       energy_requirement: energy_requirement || 'Medium',
       flexibility: flexibility || 'Flexible',
       user_estimated_minutes: parseInt(user_estimated_minutes || '60', 10)
-    }, historyCount);
+    }, historyCount, userId);
 
     const taskId = uuidv4();
     const predictedMins = prediction.predicted_minutes;
@@ -347,6 +382,10 @@ export const completeTask = async (req: AuthenticatedRequest, res: Response): Pr
     const finalActual = actual_duration_minutes !== undefined 
       ? parseInt(actual_duration_minutes, 10) 
       : (task.actual_duration_minutes || task.current_predicted_minutes || task.user_estimated_minutes || 60);
+    if (!Number.isFinite(finalActual) || finalActual <= 0 || finalActual > 1440) {
+      res.status(400).json({ error: 'Actual duration must be between 1 and 1440 minutes.' });
+      return;
+    }
 
     await db.query(
       `UPDATE tasks SET
@@ -380,6 +419,8 @@ export const completeTask = async (req: AuthenticatedRequest, res: Response): Pr
         })
       ]
     );
+
+    await retrainUserDurationModel(userId);
 
     res.json({
       message: 'Task marked as completed',

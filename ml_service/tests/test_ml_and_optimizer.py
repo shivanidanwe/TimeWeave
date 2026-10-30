@@ -1,12 +1,15 @@
 import unittest
 import sys
 import os
+import tempfile
+from unittest.mock import patch
 
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from model import model
+from model import DurationModel, UserModelRegistry, model
 from optimizer import scheduler
+from main import TaskPredictionRequest
 
 class TestMLAndOptimizer(unittest.TestCase):
     def test_model_loading_and_health(self):
@@ -58,6 +61,62 @@ class TestMLAndOptimizer(unittest.TestCase):
         pred_high, _ = model.calculate_baseline(high_task)
         pred_low, _ = model.calculate_baseline(low_task)
         self.assertGreater(pred_high, pred_low)
+
+    def test_training_reports_holdout_metrics_and_filters_invalid_durations(self):
+        records = [
+            {
+                "title": f"Task {i}",
+                "category": "Work" if i % 2 else "Study",
+                "priority": "Medium",
+                "actual_duration_minutes": 30 + i * 5
+            }
+            for i in range(10)
+        ]
+        records.extend([
+            {"title": "Invalid zero", "actual_duration_minutes": 0},
+            {"title": "Invalid missing"}
+        ])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("model.MODEL_FILE", os.path.join(temp_dir, "model.joblib")):
+                trainer = DurationModel()
+                result = trainer.train(records)
+
+        self.assertTrue(result["trained"])
+        self.assertEqual(result["samples"], 10)
+        self.assertEqual(result["evaluation_samples"], 2)
+        self.assertEqual(result["evaluation_method"], "80/20 holdout")
+        self.assertGreaterEqual(result["mae"], 0)
+        self.assertGreaterEqual(result["rmse"], 0)
+
+    def test_training_rejects_insufficient_valid_durations(self):
+        records = [{"actual_duration_minutes": 0} for _ in range(8)]
+        self.assertEqual(model.train(records)["status"], "insufficient_data")
+
+    def test_user_models_are_persisted_and_isolated(self):
+        records = [
+            {
+                "title": f"Private task {i}",
+                "category": "Work",
+                "actual_duration_minutes": 25 + i * 5
+            }
+            for i in range(10)
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("model.USER_MODEL_DIR", temp_dir):
+                registry = UserModelRegistry()
+                user_one = registry.get("user-one")
+                self.assertTrue(user_one.train(records)["trained"])
+                user_two = registry.get("user-two")
+                self.assertEqual(user_two.training_samples, 0)
+                task = {"category": "Work", "priority": "Medium"}
+                self.assertEqual(user_one.predict(task, user_history_count=10)["prediction_source"], "ml_personalized")
+                self.assertEqual(user_two.predict(task, user_history_count=10)["prediction_source"], "baseline")
+                self.assertEqual(UserModelRegistry().get("user-one").training_samples, 10)
+
+    def test_prediction_request_preserves_user_scope(self):
+        request = TaskPredictionRequest(user_id="user-one")
+        self.assertEqual(request.model_dump()["user_id"], "user-one")
 
     def test_scheduler_constraints_and_breaks(self):
         """Test that tasks respect workday boundaries and automatic breaks are placed."""

@@ -1,5 +1,6 @@
 ﻿import os
 import math
+import hashlib
 import numpy as np
 import pandas as pd
 import joblib
@@ -8,9 +9,11 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
 
 MODEL_FILE = os.path.join(os.path.dirname(__file__), "model.joblib")
+USER_MODEL_DIR = os.path.join(os.path.dirname(__file__), "user_models")
 
 CATEGORY_BASELINES = {
     "Study": 60,
@@ -37,13 +40,16 @@ CATEGORICAL_FEATURES = ["category", "priority", "energy_requirement", "flexibili
 NUMERICAL_FEATURES = ["user_estimated_minutes", "word_count", "day_of_week", "hour_of_day", "has_dependencies"]
 
 class DurationModel:
-    def __init__(self):
+    def __init__(self, model_file: Optional[str] = None, load_existing: bool = True):
+        self.model_file = model_file or MODEL_FILE
         self.pipeline: Optional[Pipeline] = None
         self.version = "1.0.0"
         self.training_samples = 0
         self.mae = 0.0
+        self.rmse = 0.0
         self.r2 = 0.0
-        self.load_if_exists()
+        if load_existing:
+            self.load_if_exists()
 
     def calculate_baseline(self, task: Dict[str, Any]) -> Tuple[int, List[str]]:
         category = task.get("category", "Work")
@@ -130,47 +136,69 @@ class DurationModel:
             }
 
     def train(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
-        if len(records) < 5:
+        rows = []
+        for record in records:
+            try:
+                actual = float(record.get("actual_duration_minutes"))
+                if not math.isfinite(actual) or actual <= 0 or actual > 1440:
+                    continue
+                rows.append(self._record_to_features({**record, "actual_duration_minutes": actual}))
+            except (TypeError, ValueError, OverflowError):
+                continue
+
+        if len(rows) < 5:
             return {
                 "status": "insufficient_data",
-                "message": f"Requires at least 5 completed tasks to train personalized model. Received: {len(records)}",
+                "message": f"Requires at least 5 valid completed tasks to train personalized model. Received: {len(rows)}",
                 "trained": False
             }
 
-        df = pd.DataFrame([self._record_to_features(r) for r in records])
+        df = pd.DataFrame(rows)
         X = df.drop(columns=["actual_duration_minutes"])
         y = df["actual_duration_minutes"]
 
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL_FEATURES),
-                ("num", StandardScaler(), NUMERICAL_FEATURES)
-            ]
+        def build_pipeline() -> Pipeline:
+            preprocessor = ColumnTransformer(
+                transformers=[
+                    ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL_FEATURES),
+                    ("num", StandardScaler(), NUMERICAL_FEATURES)
+                ]
+            )
+            return Pipeline([
+                ("preprocessor", preprocessor),
+                ("regressor", RandomForestRegressor(n_estimators=60, random_state=42, min_samples_split=2))
+            ])
+
+        train_x, test_x, train_y, test_y = train_test_split(
+            X, y, test_size=0.2, random_state=42
         )
+        evaluation_pipeline = build_pipeline()
+        evaluation_pipeline.fit(train_x, train_y)
+        test_predictions = evaluation_pipeline.predict(test_x)
+        mae = float(mean_absolute_error(test_y, test_predictions))
+        rmse = float(np.sqrt(mean_squared_error(test_y, test_predictions)))
+        r2 = float(r2_score(test_y, test_predictions)) if len(test_y) > 1 else 0.0
 
-        pipeline = Pipeline([
-            ("preprocessor", preprocessor),
-            ("regressor", RandomForestRegressor(n_estimators=60, random_state=42, min_samples_split=2))
-        ])
-
+        pipeline = build_pipeline()
         pipeline.fit(X, y)
-        preds = pipeline.predict(X)
-        mae = float(mean_absolute_error(y, preds))
-        r2 = float(r2_score(y, preds)) if len(records) > 2 else 0.0
 
         self.pipeline = pipeline
-        self.training_samples = len(records)
+        self.training_samples = len(rows)
         self.mae = round(mae, 2)
+        self.rmse = round(rmse, 2)
         self.r2 = round(r2, 2)
-        self.version = f"1.0.{len(records)}"
+        self.version = f"1.1.{len(rows)}"
 
         self.save()
 
         return {
             "status": "success",
             "trained": True,
-            "samples": len(records),
+            "samples": len(rows),
+            "evaluation_samples": len(test_y),
+            "evaluation_method": "80/20 holdout",
             "mae": self.mae,
+            "rmse": self.rmse,
             "r2": self.r2,
             "version": self.version
         }
@@ -213,26 +241,46 @@ class DurationModel:
 
     def save(self):
         try:
+            os.makedirs(os.path.dirname(self.model_file), exist_ok=True)
             joblib.dump({
                 "pipeline": self.pipeline,
                 "training_samples": self.training_samples,
                 "mae": self.mae,
+                "rmse": self.rmse,
                 "r2": self.r2,
                 "version": self.version
-            }, MODEL_FILE)
+            }, self.model_file)
         except Exception as e:
             print("Failed to save model:", e)
 
     def load_if_exists(self):
-        if os.path.exists(MODEL_FILE):
+        if os.path.exists(self.model_file):
             try:
-                data = joblib.load(MODEL_FILE)
+                data = joblib.load(self.model_file)
                 self.pipeline = data.get("pipeline")
                 self.training_samples = data.get("training_samples", 0)
                 self.mae = data.get("mae", 0.0)
+                self.rmse = data.get("rmse", 0.0)
                 self.r2 = data.get("r2", 0.0)
                 self.version = data.get("version", "1.0.0")
             except Exception as e:
                 print("Failed to load model:", e)
 
-model = DurationModel()
+
+class UserModelRegistry:
+    def __init__(self):
+        self._models: Dict[str, DurationModel] = {}
+
+    def get(self, user_id: Optional[str]) -> DurationModel:
+        if not user_id:
+            return model
+
+        model_key = hashlib.sha256(user_id.encode("utf-8")).hexdigest()
+        if model_key not in self._models:
+            model_path = os.path.join(USER_MODEL_DIR, f"{model_key}.joblib")
+            self._models[model_key] = DurationModel(model_path)
+        return self._models[model_key]
+
+
+model = DurationModel(load_existing=False)
+user_models = UserModelRegistry()

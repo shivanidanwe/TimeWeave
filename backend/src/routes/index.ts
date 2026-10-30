@@ -90,3 +90,4 @@ apiRouter.patch('/preferences', authenticateToken, prefCtrl.updatePreferences);
 
 // AI Assistant Chat Route
 apiRouter.post('/chat', authenticateToken, chatCtrl.handleChatMessage);
+apiRouter.post('/assistant/chat', authenticateToken, chatCtrl.handleChatMessage);

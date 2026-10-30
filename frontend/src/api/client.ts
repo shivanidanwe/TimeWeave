@@ -182,7 +182,7 @@ class ApiClient {
 
   // Chat
   async sendChatMessage(message: string, conversation_history?: any[]) {
-    return this.request('/chat', {
+    return this.request('/assistant/chat', {
       method: 'POST',
       body: JSON.stringify({ message, conversation_history })
     });

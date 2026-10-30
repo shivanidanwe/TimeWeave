@@ -160,6 +160,7 @@ export interface ChatMessage {
   actions?: Array<{
     label: string;
     action: string;
+    query?: string;
     schedule?: any;
   }>;
 }

@@ -1,13 +1,13 @@
 # TimeWeave — Adaptive Personal Time and Workload Optimizer
 
-TimeWeave is a full-stack, AI-powered personal time and workload optimization web application designed to help students, professionals, and teams plan their time realistically.
+TimeWeave is a locally run personal time and workload optimizer for students and professionals. It combines task management, a deterministic scheduling engine, workload analytics, and per-user task-duration models.
 
 Unlike conventional to-do lists, TimeWeave:
-- Learns actual task durations from historical completion variance using Scikit-Learn regression.
+- Trains a per-user Scikit-Learn duration model from that user's completed task history when enough valid records are available.
 - Compares planned workload against available working hours.
 - Detects overcommitment before burnout occurs.
 - Generates realistic schedules respecting hard and soft constraints (deadlines, dependencies, energy cycles, and breaks).
-- Implements the exact pastel aesthetic and 14 UI screens specified in the primary design reference.
+- Uses a responsive React interface for task planning, analytics, focus sessions, and preferences.
 
 ---
 
@@ -28,7 +28,7 @@ TimeWeave
 ├── ml_service/             # Python 3.11 + FastAPI + Scikit-Learn
 │   ├── model.py            # Random Forest Duration Regression & Cold-Start Baseline Heuristics
 │   ├── optimizer.py        # Deterministic Constraint-Based Scheduling Engine
-│   ├── train.py            # Model training & benchmark dataset generator
+│   ├── train.py            # Explicit user-scoped training from supplied completion records
 │   └── tests/              # Automated ML and constraint scheduling unit tests
 ├── start-all.js            # Unified one-command startup launcher
 └── test-all.js             # Automated end-to-end test runner
@@ -61,15 +61,10 @@ TimeWeave
 - **npm**: v9.0.0 or higher
 - **Python**: v3.10 or higher (v3.11 tested) with pip
 - **Database**:
-  - **PostgreSQL (Primary & Configured)**: Local PostgreSQL is configured and active.
-    - URL: `postgresql://postgres:1234@localhost:5432/timeweave`
-    - Tables: 12 relational tables (`users`, `user_preferences`, `tasks`, `task_dependencies`, `task_time_sessions`, `task_interruptions`, `schedule_versions`, `schedule_blocks`, `task_history`, `model_predictions`, `notifications`, `model_metrics`).
-  - **Zero-config SQLite (Fallback)**: When `DATABASE_URL` is omitted, the dual-engine database manager falls back to embedded SQLite.
+  - PostgreSQL is used when `DATABASE_URL` is set.
+  - Embedded SQLite is used for zero-configuration local development when `DATABASE_URL` is omitted.
 
-### Pre-seeded Demo Credentials
-- **Email:** `demo@timeweave.app`
-- **Password:** `demoPassword123!`
-- Seed command: `npm run seed` (or `cd backend && npm run seed`)
+The optional seed command creates a development-only demo account and sample records. It deletes any existing demo account and its records before recreating them, so do not use it against a database containing data you need to keep. Seeding is rejected when `NODE_ENV` is not `development`.
 
 ---
 
@@ -77,13 +72,28 @@ TimeWeave
 
 From the project root directory (`C:\Users\SHIVANI\TimeWeave\TimeWeave`):
 
-```bash
-# 1. Seed or re-seed sample user data (optional)
-npm run seed
+```powershell
+# Run these commands from the TimeWeave application directory.
 
-# 2. Start all 3 services concurrently
-npm run dev
-# Or: node start-all.js
+# 1. Install JavaScript dependencies
+npm.cmd install
+npm.cmd install --prefix backend
+npm.cmd install --prefix frontend
+
+# 2. Install Python dependencies in a virtual environment
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r ml_service\requirements.txt
+
+# 3. Configure the backend environment (optional for SQLite development)
+Copy-Item backend/.env.example backend/.env
+# Set a unique JWT_SECRET. Set DATABASE_URL to a local PostgreSQL connection string, or leave it unset to use SQLite.
+
+# 4. Seed development sample data (optional; deletes and recreates the demo account)
+npm.cmd run seed
+
+# 5. Start all three local services
+npm.cmd run dev
 ```
 
 The services will launch automatically:
@@ -91,20 +101,45 @@ The services will launch automatically:
 - **Node.js API Gateway**: http://localhost:5000/api
 - **Python ML Service**: http://127.0.0.1:8000
 
+If one of those ports is already occupied, use three PowerShell terminals from the application directory. This example uses frontend `3002`, API `5001`, and ML `8001`:
+
+```powershell
+# Terminal 1: ML service
+$env:ML_SERVICE_PORT = '8001'
+python .\ml_service\main.py
+
+# Terminal 2: backend
+$env:PORT = '5001'
+$env:ML_SERVICE_URL = 'http://127.0.0.1:8001'
+$env:FRONTEND_URL = 'http://localhost:3002'
+npm.cmd run dev --prefix backend
+
+# Terminal 3: frontend
+$env:API_PROXY_TARGET = 'http://127.0.0.1:5001'
+npm.cmd run dev --prefix frontend -- --host 127.0.0.1 --port 3002 --strictPort
+```
+
 ---
 
 ## 5. Running Automated Tests
 
-Run the full end-to-end automated test suite:
+Run the Python unit tests, backend API integration tests, and frontend route test:
 
-```bash
-npm test
-# Or: node test-all.js
+```powershell
+npm.cmd test
+# Or: node .\test-all.js
 ```
 
 This runs:
-1. **Python ML & Constraint Optimizer Tests (10 unit tests)**: Evaluates heuristic baseline predictions, Random Forest model predictions, overcommitment detection, priority/energy ordering, break insertion, and 4.J natural language queries.
-2. **Backend REST API Integration Tests (12 integration tests)**: Executes health checks, registration, duplicate checks, token auth, multi-user data isolation, task CRUD, completion logging, preferences, schedule generation/acceptance, focus sessions, real analytics calculations, and notifications against PostgreSQL.
+1. **Python ML & Constraint Optimizer Tests (14 unit tests)**: Covers baseline prediction, held-out model evaluation, invalid history, per-user model isolation, workload, and schedule constraints.
+2. **Backend REST API Integration Tests**: Covers health, registration, authentication, user data isolation, task CRUD and completion, preferences, schedule persistence, ten assistant intents, invalid input/token, empty history, ML/database failure, analytics, focus sessions, notifications, and legacy route compatibility.
+3. **Frontend Tests (1 route test)**: Verifies unauthenticated navigation redirects from a protected page to login.
+
+Build the frontend and backend:
+
+```powershell
+npm.cmd run build
+```
 
 ---
 
@@ -112,23 +147,23 @@ This runs:
 
 If you prefer starting each service individually in separate terminals:
 
-### Terminal 1: Python AI/ML Service
-```bash
-python ml_service/main.py
-# Runs on http://127.0.0.1:8000
+### Terminal 1: Python ML and Scheduling Service
+```powershell
+python .\ml_service\main.py
+# Runs on http://127.0.0.1:8000 and is bound to loopback only.
 ```
 
 ### Terminal 2: Node.js Express Backend
 ```bash
 cd backend
-npm run dev
+npm.cmd run dev
 # Runs on http://localhost:5000
 ```
 
 ### Terminal 3: React Vite Frontend
 ```bash
 cd frontend
-npm run dev
+npm.cmd run dev
 # Runs on http://localhost:3000
 ```
 
@@ -161,6 +196,7 @@ npm run dev
 | `GET` | `/api/history` | Fetch task event log and calibration variance |
 | `GET` | `/api/notifications` | Fetch persisted notifications |
 | `POST` | `/api/chat` | AI productivity coach chat and feasibility analysis |
+| `POST` | `/api/assistant/chat` | Authenticated, user-context assistant; `/api/chat` remains a compatibility alias |
 | `POST` | `/api/ml/predict-duration` | Python ML Random Forest task duration prediction |
 | `POST` | `/api/ml/analyze-workload` | Workload capacity and overcommitment detection |
 | `POST` | `/api/ml/optimize-schedule` | Constraint-based interval schedule solver |
@@ -168,6 +204,20 @@ npm run dev
 
 ---
 
-## 8. License
+## 8. Data Science and Training
+
+New tasks use a transparent category/priority baseline until that account has at least five valid completed-task records and a per-user model has been trained. On task completion, the backend sends only that account's valid completion history to the local ML service; retraining occurs after at least five new valid records. Model artifacts are stored under hashed user IDs and are never shared between accounts. The legacy shared `model.joblib` is not loaded by application predictions.
+
+Training uses a deterministic 80/20 holdout split for MAE, RMSE, and R² reporting, then fits the persisted user model on all valid records. Targets must be finite actual durations from 1 to 1440 minutes. No synthetic benchmark records are generated by the application.
+
+For explicit local training, provide a JSON array containing real completed task records and run:
+
+```powershell
+python .\ml_service\train.py <user-id> <records.json>
+```
+
+The schedule engine is deterministic rule-based optimization, not generative AI. It orders work by priority and deadline, preserves working hours and breaks, and reports infeasible tasks. If the Python service is unavailable, the backend uses a simpler deterministic capacity fallback and does not invent workload percentages.
+
+## 9. License
 
 MIT License. Built for TimeWeave Productivity.
